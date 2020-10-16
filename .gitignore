@@ -1,0 +1,11 @@
+# Ignore everything
+*
+
+# Except:
+!.gitignore
+!cscan.py
+!agilent.py
+!agilent_libs/agilent_language.py
+!agilent_libs/agilent_backend.py
+!agilent_libs/waveform_generator.py
+!agilent_libs/__init__.py
