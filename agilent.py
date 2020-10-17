@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # ----------------------------------------------------------------------
 # Author:        yury.matveev@desy.de
 # ----------------------------------------------------------------------
@@ -8,20 +6,29 @@
 
 from sardana.macroserver.macro import *
 
-import sys; sys.path.append(r"/home/p23user/sardanaMacros/")
+
+import sys
+sys.path.append(r"/home/p23user/sardanaMacros/")
+
 from agilent_libs.agilent_backend import SMU
 import agilent_libs.agilent_language as smu_lang
 import agilent_libs.waveform_generator as wg
+from agilent_libs import sweep
+import numpy as np
+import os
+
+#from imp import reload
+#reload(agilent_libs.agilent_language)
+#reload(smu_lang)
 
 
 HOST = "192.168.132.44"
 PORT = 5025
-COMPLIANCE = 1e-6
 
-ENABLED_CHANNELS = [1, 2]
+ENABLED_CHANNELS = [1,2]
 ENABLED_PLOTS = ('IT', 'VT', 'IV')
 
-__all__ = ['reset_agilent', 'run_agilent', 'read_data']
+__all__ = ['reset_agilent', 'run_agilent', 'read_agilent']
 
 # ----------------------------------------------------------------------
 #                       This macro resets SMU
@@ -34,63 +41,85 @@ class reset_agilent(Macro):
 # ----------------------------------------------------------------------
 #                       This macro runs SMU
 # ----------------------------------------------------------------------
-class run_agilent(Macro):
 
-    param_def = [["pulse_voltage",  Type.Float,     None,   'Voltage value at pulse plato'],
-                 ["pulse_rise",     Type.Float,     None,   'Pulse rise and descend time'],
-                 ["pulse_hold",     Type.Float,     None,   'Pulse hold time'],
-                 ["hold_voltage",   Type.Float,     None,   'Hold voltage'],
-                 ["sampling",       Type.Float,     None,   'Sampling period'],
+
+class run_agilent(Macro):
+    param_def = [
+                 ["sampling",           Type.Float,     None,           'smallest interval in wafe function'],
+                 ["compliance",         Type.Float,     None,           'maximum read out current'],
+                 ["hold_voltage",       Type.Float,     None,           'final voltage'],
+                 ["hold_time",          Type.Float,     None,           'dwell time at target voltage'],
+                 ["pulse_voltage",      Type.Float,     np.nan,         'pulse voltage'],
+                 ["pulse_rise",         Type.Float,     np.nan,         'pulse rise time'],
                  ]
 
-    def prepare(self, pulse_voltage, pulse_rise, pulse_hold, hold_voltage, sampling):
 
-        self.smu = SMU(HOST, PORT)
-        self.smu.check_for_errors()
+    def prepare(self, sampling, compliance, hold_voltage, hold_time, pulse_voltage, pulse_rise):
+        if smu_lang.SMU is None:
+            self.smu = SMU(HOST, PORT)
+            self.smu.check_for_errors()
 
-        self.smu_lang.SMU = self.smu
-        self.smu_lang.clear_SMU()
-        self.smu_lang.init_traces()
+            smu_lang.SMU = self.smu
+        else:
+            self.smu = smu_lang.SMU
+
+        smu_lang.reset_SMU()
+        smu_lang.abort_SMU()
+        smu_lang.clear_SMU()
+        smu_lang.init_traces() # only for the first time ??
 
         # sampling period, sec
-        fs = sampling
+        wf = wg.init_wf(sampling)
 
-        wf = wg.init_wf(fs)
-        # wavefore, len(wavefore) = gen_pulse(wf, rise time, hold time, max voltage, base voltage)
-        wf, len_wf = wg.gen_pulse(wf, 10*fs, fs, 0.4, 0)
 
-        # wavefore, len(wavefore) = gen_space(wf, hold time , base voltage)
-        wf, len_wf = wg.gen_space(wf, fs, 0)
+        if pulse_voltage==np.nan:
+            # wavefore, len(wavefore) = gen_pulse(wf, rise time, hold time, max voltage, base voltage)
+            wf, len_wf = wg.gen_pulse(wf, pulse_rise, hold_time, pulse_voltage, hold_voltage)
+            self.output("Applying pulse...")
+        else:
+            # wavefore, len(wavefore) = gen_space(wf, hold time , base voltage)
+            wf, len_wf = wg.gen_space(wf, hold_time, hold_voltage)
+            self.output("Probing...")
 
         for channel in ENABLED_CHANNELS:
-            self.smu_lang.set_compliance(channel, COMPLIANCE)
+            smu_lang.set_compliance(channel, compliance)
             # smu_lang.set_range(1, compliance)
-            self.smu_lang.set_auto_range(channel)
+            smu_lang.set_auto_range(channel)
 
-        self.smu_lang.set_channel_list_sweep(ENABLED_CHANNELS[0], wf["vseries"], fs)
+        smu_lang.set_channel_list_sweep(ENABLED_CHANNELS[0], wf["vseries"], sampling)
         if len(ENABLED_CHANNELS) > 1:
-            self.smu_lang.set_channel_spot(ENABLED_CHANNELS[1], 0, len_wf, fs)
+            smu_lang.set_channel_spot(ENABLED_CHANNELS[1], 0, len_wf, sampling)
 
     def run(self, *args):
-        self.smu_lang.force_frigger(ENABLED_CHANNELS)
+        smu_lang.force_frigger(ENABLED_CHANNELS)
 
 # ----------------------------------------------------------------------
 #                       This macro gets data from SMU and saves it
 # ----------------------------------------------------------------------
 
-class read_data(Macro):
+class read_agilent(Macro):
     env = ('ScanDir', 'ScanFile')
+    param_def = [
+                 ["wait_time",       Type.Float,     10.,   'Wait time for result'],
+                 ]
 
-    def run(self):
-        smu = SMU(HOST, PORT)
-        smu_lang.SMU = smu
+    def run(self, wait_time):
+        if smu_lang.SMU is None:
+            self.output("init SMU...")
+            smu = SMU(HOST, PORT)
+            smu_lang.SMU = smu
+        else:
+            smu = smu_lang.SMU
 
-        smu.wait_till_complete(15)
+        smu.wait_till_complete(wait_time)
         codes, descriptions = smu.check_for_errors()
         if codes[0] != 0:
             for code, desc in zip(codes, descriptions):
                 self.output('Got an error {}: {}'.format(code, desc))
         else:
-            res = smu_lang.get_traces([1, 2])
-            smu_lang.save_smu_data(res, self.getEnv('ScanFile'), self.getEnv('ScanDir'))
-            smu_lang.plot_smu_data(res, channels=ENABLED_CHANNELS, plots=ENABLED_PLOTS, macro_handle=self)
+            res = smu_lang.get_traces(ENABLED_CHANNELS)
+            scanname = "%s_%05i"%(os.path.splitext(self.getEnv('ScanFile')[0])[0], self.getEnv('ScanID'))
+            smu_lang.save_smu_data_spock(res, self.getEnv('ScanDir'), scanname, self.getEnv('Meas_point_index_number'))
+            #smu_lang.plot_smu_data(res, channels=ENABLED_CHANNELS, plots=ENABLED_PLOTS, macro_handle=self)
+
+

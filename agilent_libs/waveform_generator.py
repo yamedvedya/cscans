@@ -13,6 +13,11 @@ def init_wf(fs):
     return {"fs":fs,
           "vseries": np.array(0)}
 
+# ----------------------------------------------------------------------
+def gen_sweep(wf, vmin, vmax, numpoints):
+    sweep = np.linspace(vmin, vmax, num=numpoints)
+    wf["vseries"] = np.append(wf["vseries"], sweep)
+    return wf, len(wf["vseries"])
 
 # ----------------------------------------------------------------------
 def gen_pulse(wf, rise, hold, voltage, v_base=0):

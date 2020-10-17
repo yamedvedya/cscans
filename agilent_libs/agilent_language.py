@@ -16,6 +16,11 @@ def clear_SMU():
     SMU.write_command(":TRAC1:CLE")
     SMU.write_command(":TRAC2:CLE")
 
+    for ch in [1, 2]:
+        SMU.write_command(':trace{:d}:feed:control nev'.format(ch))
+        SMU.write_command(":trace{:d}:clear".format(ch))
+        SMU.write_command(':trace{:d}:feed:control next'.format(ch))
+
 # ----------------------------------------------------------------------
 def init_setup_SMU():
     SMU.write_command(":OUTP:LOW GRO")
@@ -59,7 +64,6 @@ def set_continuous_both(voltage1, voltage2, refresh = 1e-1):
 
 # ----------------------------------------------------------------------
 def force_frigger(channels = ''):
-
     if channels:
         if isinstance(channels, int):
             SMU.write_command(":INITIATE:IMMEDIATE:ALL (@{:d})".format(channels))
@@ -220,18 +224,48 @@ def save_smu_data(data, scan_name=None, folder=None):
 
     return full_file_name
 
+
+
+def save_smu_data_spock(data, folder, scan_name, point_idx):
+    outdir = os.path.join(folder, scan_name, "agilent")
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+
+    gen_outpath = os.path.join(outdir, scan_name+"_%05i_%03i.txt")
+
+    idata = 0
+    while True:
+        outpath = gen_outpath%(point_idx, idata)
+        if not os.path.isfile(outpath):
+            break
+
+
+    npts = 0
+    field_names = []
+
+    for channel in range(len(data["channels"])):
+        field_names = ['ch_{}_{}'.format(channel+1, field) for field in list(data["data"][channel].keys())]
+        npts = len(data["data"][channel]['source'])
+
+    data_to_save = np.zeros((npts, len(field_names)))
+    for ind, field_name in enumerate(field_names):
+        _, channel, field = field_name.split('_')
+        data_to_save[:, ind] = data["data"][int(channel)-1][field]
+
+    np.savetxt(outpath, data_to_save, delimiter=',', newline='\n', header=','.join(field_names))
+    return outpath
+
+
+
+
 # ----------------------------------------------------------------------
-def plot_smu_data(data, channels=(1, 2), plots=('IT', 'VT', 'IV'), macro_handle=None):
+def plot_smu_data(data, channels=(1, 2), plots=('IT', 'VT', 'IV')):
 
     fields = {'V': 'voltage',
               'I': 'current',
               'T': 'time'}
 
-    if macro_handle is None:
-        fig, axes = plt.subplots(nrows=len(plots), ncols=len(channels))
-    else:
-        fig, axes = macro_handle.pyplot.subplots(nrows=len(plots), ncols=len(channels))
-
+    fig, axes = plt.subplots(nrows=len(plots), ncols=len(channels))
     axes = np.array(axes).flatten()
     for ch_ind, ch in enumerate(channels):
         for pl_ind, pl in enumerate(plots):
@@ -242,9 +276,53 @@ def plot_smu_data(data, channels=(1, 2), plots=('IT', 'VT', 'IV'), macro_handle=
             except:
                 pass
 
-    if macro_handle is None:
-        plt.show()
-        plt.ion()
+    plt.show()
+    plt.ion()
+
+
+#### Edited:
+def ressw_smu_data(data, voltchan, curchan):
+
+    fields = {'V': 'voltage',
+              'I': 'current',
+              'T': 'time'}
+
+    fig = plt.figure(figsize=(5,9))
+    ax1 = fig.add_subplot(311)
+    ax2 = fig.add_subplot(312, sharex=ax1)
+    ax3 = fig.add_subplot(313)
+
+    ax2.set_xlabel("Time (s)")
+    ax1.set_ylabel("Voltage (V)")
+    ax2.set_ylabel("Current (A)")
+
+    ax3.set_xlabel("Voltage (V)")
+    ax3.set_ylabel("Current (A)")
+
+    ax1.set_title("Voltage over time")
+    ax2.set_title("Current over time")
+    ax3.set_title("IV log")
+
+    ax1.plot(data["data"][voltchan-1]["time"], data["data"][voltchan-1]["voltage"])
+    ax2.plot(data["data"][voltchan-1]["time"], np.abs(data["data"][curchan-1]["current"]))
+    ax3.plot(data["data"][voltchan-1]["voltage"], np.abs(data["data"][curchan-1]["current"]))
+    ax3.semilogy()
+    ax2.semilogy()
+    plt.show()
+    plt.ion()
+
+#    axes = np.array(axes).flatten()
+#    for ch_ind, ch in enumerate(channels):
+#        for pl_ind, pl in enumerate(plots):
+#            axes[ch_ind*len(plots) + pl_ind].set_title('CH_{} {}'.format(ch, pl))
+#            try:
+#                axes[ch_ind*len(plots) + pl_ind].plot(data["data"][ch-1][fields[pl[1]]],
+#                                                      data["data"][ch-1][fields[pl[0]]])
+#            except:
+#                pass
+
+
+
 
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
