@@ -12,14 +12,12 @@ SMU = None
 
 # ----------------------------------------------------------------------
 def clear_SMU():
-
-    SMU.write_command(":TRAC1:CLE")
-    SMU.write_command(":TRAC2:CLE")
-
+    cmds = []
     for ch in [1, 2]:
-        SMU.write_command(':trace{:d}:feed:control nev'.format(ch))
-        SMU.write_command(":trace{:d}:clear".format(ch))
-        SMU.write_command(':trace{:d}:feed:control next'.format(ch))
+        cmds.append(':trace{:d}:feed:control nev'.format(ch))
+        cmds.append(":trace{:d}:clear".format(ch))
+        cmds.append(':trace{:d}:feed:control next'.format(ch))
+    SMU.write_command(";".join(cmds))
 
 # ----------------------------------------------------------------------
 def init_setup_SMU():
@@ -87,13 +85,14 @@ def set_range(channel, range):
 
 # ----------------------------------------------------------------------
 def set_channel_list_sweep(channel, vals, fs):
-
-    SMU.write_command(":source{:d}:voltage:mode list".format(channel))
-    SMU.write_command(':source{:d}:voltage:range:auto off'.format(channel))
-    SMU.write_command(':source{:d}:voltage:range 2e1'.format(channel))
-    SMU.write_command(':source{:d}:voltage {:E}'.format(channel, vals[-1]))
-    SMU.write_command(':source{:d}:function:mode voltage'.format(channel))
-    SMU.write_command(':source{:d}:function:shape dc'.format(channel))
+    cmds = []
+    cmds.append(":source{:d}:voltage:mode list".format(channel))
+    cmds.append(':source{:d}:voltage:range:auto off'.format(channel))
+    cmds.append(':source{:d}:voltage:range 2e1'.format(channel))
+    cmds.append(':source{:d}:voltage {:E}'.format(channel, vals[-1]))
+    cmds.append(':source{:d}:function:mode voltage'.format(channel))
+    cmds.append(':source{:d}:function:shape dc'.format(channel))
+    SMU.write_command(";".join(cmds))
 
     cmd = ":source{:d}:list:voltage".format(channel)
 
@@ -102,23 +101,28 @@ def set_channel_list_sweep(channel, vals, fs):
     cmd = cmd[0:-1]
     SMU.write_command(cmd)
 
-    SMU.write_command(':trigger{:d}:all:count {:d}'.format(channel, len(vals)))
-    SMU.write_command(':trigger{:d}:all:timer {:E}'.format(channel, fs))
-    SMU.write_command(':trigger{:d}:all:source timer'.format(channel))
+    cmds = []
+    cmds.append(':trigger{:d}:all:count {:d}'.format(channel, len(vals)))
+    cmds.append(':trigger{:d}:all:timer {:E}'.format(channel, fs))
+    cmds.append(':trigger{:d}:all:source timer'.format(channel))
+    SMU.write_command(";".join(cmds))
 
 # ----------------------------------------------------------------------
 def set_channel_spot(channel, v, npts, fs):
+    cmds = []
 
-    SMU.write_command(':source{:d}:voltage:mode fix'.format(channel))
-    SMU.write_command(':source{:d}:voltage:range:auto off'.format(channel))
-    SMU.write_command(':source{:d}:voltage:range 2e1'.format(channel))
-    SMU.write_command(':source{:d}:function:mode voltage'.format(channel))
-    SMU.write_command(':source{:d}:function:shape dc'.format(channel))
-    SMU.write_command(':source{:d}:voltage {:E}'.format(channel, v))
+    cmds.append(':source{:d}:voltage:mode fix'.format(channel))
+    cmds.append(':source{:d}:voltage:range:auto off'.format(channel))
+    cmds.append(':source{:d}:voltage:range 2e1'.format(channel))
+    cmds.append(':source{:d}:function:mode voltage'.format(channel))
+    cmds.append(':source{:d}:function:shape dc'.format(channel))
+    cmds.append(':source{:d}:voltage {:E}'.format(channel, v))
 
-    SMU.write_command(':trigger{:d}:all:count {:d}'.format(channel, npts))
-    SMU.write_command(':trigger{:d}:all:timer {:E}'.format(channel, fs))
-    SMU.write_command(':trigger{:d}:all:source timer'.format(channel))
+    cmds.append(':trigger{:d}:all:count {:d}'.format(channel, npts))
+    cmds.append(':trigger{:d}:all:timer {:E}'.format(channel, fs))
+    cmds.append(':trigger{:d}:all:source timer'.format(channel))
+
+    SMU.write_command(";".join(cmds))
 
 # ----------------------------------------------------------------------
 def set_channel_sampling(channel, v, npts, fs):
@@ -238,21 +242,23 @@ def save_smu_data_spock(data, folder, scan_name, point_idx):
         outpath = gen_outpath%(point_idx, idata)
         if not os.path.isfile(outpath):
             break
+        idata += 1
 
 
     npts = 0
     field_names = []
 
-    for channel in range(len(data["channels"])):
-        field_names = ['ch_{}_{}'.format(channel+1, field) for field in list(data["data"][channel].keys())]
-        npts = len(data["data"][channel]['source'])
+    names = []
+    dout = []
+    for ichan, channel in enumerate(data["channels"]):
+        for field in data["data"][ichan]:
+            field_name = 'ch_{}_{}'.format(channel, field)
+            names.append(field_name)
+            dout.append(data["data"][ichan][field])
 
-    data_to_save = np.zeros((npts, len(field_names)))
-    for ind, field_name in enumerate(field_names):
-        _, channel, field = field_name.split('_')
-        data_to_save[:, ind] = data["data"][int(channel)-1][field]
+    dout = np.vstack((dout)).T
 
-    np.savetxt(outpath, data_to_save, delimiter=',', newline='\n', header=','.join(field_names))
+    np.savetxt(outpath, dout, header=' '.join(names))
     return outpath
 
 

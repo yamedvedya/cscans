@@ -17,7 +17,7 @@ class SMU(object):
 
     DATA_BUFFER_SIZE = 2**22
 
-    SOCKET_TIMEOUT = 3
+    SOCKET_TIMEOUT = 1
     RECONNECTION_DELAY = 5
 
     # ----------------------------------------------------------------------
