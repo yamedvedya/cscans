@@ -543,7 +543,6 @@ class LambdaRoiWorker(object):
 
         if 'atten' in source_info.label:
             self._channel = int(source_info.label[-7])-1
-            self._macro.output('Roi number {}'.format(self._channel))
             self._correction_needed = True
             self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('AttenuatorProxy'))
         else:
@@ -690,7 +689,7 @@ class scancl(object):
 
         if self.integ_time < 0.1:
             options = "Yes", "No"
-            run_or_not = self.input("The {} integration time is too short for continuous scans. Abort or continue?",
+            run_or_not = self.input("The {} integration time is too short for continuous scans. Recommended > 0.1 sec. Continue?".format(self.integ_time),
                                     data_type=options, allow_multiple=False, title="Favorites", default_value='No')
             if run_or_not == 'No':
                 self.do_scan = False
