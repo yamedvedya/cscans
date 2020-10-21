@@ -663,13 +663,14 @@ class scancl(object):
     def _prepare(self, mode, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         # save the user parameters
+        self.mode = mode
         self.motors = motor
         self.start_pos = start_pos
         self.final_pos = final_pos
         self.nsteps = nb_steps
         self.integ_time = integ_time
 
-        if mode == 'dscan':
+        if self.mode == 'dscan':
             self._motion = self.getMotion([m.getName() for m in self.motors])
             self.originalPositions = np.array(self._motion.readPosition(force=True))
             self.start_pos += self.originalPositions
@@ -716,8 +717,9 @@ class scancl(object):
             yield step
 
     def do_restore(self):
-        self.info("Returning to start positions...")
-        self._motion.move(self.originalPositions)
+        if self.mode == 'dscan':
+            self.output("Returning to start positions...")
+            self._motion.move(self.originalPositions)
 
 # ----------------------------------------------------------------------
 #                       These classes are called by user
@@ -802,6 +804,7 @@ class lambda_senv(Macro):
     def run(self):
         self.setEnv("LambdaDevice", "hasep23oh:10000/p23/lambda/01")
         self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
+        self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuator")
 
 # ----------------------------------------------------------------------
 #                       Auxiliary classes
