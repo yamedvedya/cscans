@@ -599,14 +599,18 @@ class scancl(object):
 
     def _prepare(self, mode, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        self.name = 'dscancl'
-
         # save the user parameters
         self.motors = motor
         self.start_pos = start_pos
         self.final_pos = final_pos
         self.nsteps = nb_steps
         self.integ_time = integ_time
+
+        if mode == 'dscan':
+            self._motion = self.getMotion([m.getName() for m in self.motors])
+            self.originalPositions = np.array(self._motion.readPosition(force=True))
+            self.start_pos += self.originalPositions
+            self.final_pos += self.originalPositions
 
         # the "env" dictionary may be passed as an option
         env = opts.get('env', {})
@@ -647,6 +651,11 @@ class scancl(object):
             point_no += 1
             step["point_id"] = point_no
             yield step
+
+    def do_restore(self):
+        self.info("Returning to start positions...")
+        self._motion.move(self.originalPositions)
+
 # ----------------------------------------------------------------------
 #                       These classes are called by user
 # ----------------------------------------------------------------------
@@ -659,7 +668,10 @@ class dcscan(Macro, scancl):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'dscancl'}
+    hints = {'scan': 'dcscan', 'allowsHooks': ('pre-scan', 'pre-move',
+                                               'post-move', 'pre-acq',
+                                               'post-acq',
+                                               'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -668,12 +680,12 @@ class dcscan(Macro, scancl):
         ['start_pos',       Type.Float,     None,   'Scan start position'],
         ['final_pos',       Type.Float,     None,   'Scan final position'],
         ['nb_steps',        Type.Integer,   None,   'Nb of steps'],
-        ['integ_time',        Type.Float,     None,   'Integration time'],
+        ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        self.name = 'dscancl'
+        self.name = 'dcscan'
 
         self._prepare('dscan', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
                       nb_steps, integ_time, **opts)
@@ -690,7 +702,10 @@ class acscan(Macro, scancl):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'dscancl'}
+    hints = {'scan': 'acscan', 'allowsHooks': ('pre-scan', 'pre-move',
+                                               'post-move', 'pre-acq',
+                                               'post-acq',
+                                               'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -699,13 +714,13 @@ class acscan(Macro, scancl):
         ['start_pos',       Type.Float,     None,   'Scan start position'],
         ['final_pos',       Type.Float,     None,   'Scan final position'],
         ['nb_steps',        Type.Integer,   None,   'Nb of steps'],
-        ['integ_time',        Type.Float,     None,   'Integration time'],
+        ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        self.name = 'dscancl'
+        self.name = 'acscan'
 
         self._prepare('ascan', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
                       nb_steps, integ_time, **opts)
@@ -713,6 +728,10 @@ class acscan(Macro, scancl):
     def run(self, *args):
         for step in self._gScan.step_scan():
             yield step
+
+# ----------------------------------------------------------------------
+#                       Auxiliary class to set environment
+# ----------------------------------------------------------------------
 
 class lambda_senv(Macro):
     """ Sets default environment variables """
