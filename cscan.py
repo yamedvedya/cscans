@@ -27,13 +27,14 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 
-verbose = True
+verbose = False
 debug = False
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
 SYNC_MOVE = True
 TIMEOUT = 15
+TIMEOUT_LAMBDA = 1
 REFRESH_PERIOD = 5e-4
 
 __all__ = ['dcscan', 'acscan', 'lambda_senv']
@@ -70,7 +71,6 @@ class CCScan(CSScan):
                     _lambda_settled = True
 
         # DataWorkers array
-        self._lambda_roi_workers = []
         self._data_workers = []
 
         if debug:
@@ -80,7 +80,7 @@ class CCScan(CSScan):
 
         #We start main data collector loop
         _data_collector_trigger = Queue()
-        self._data_collector = DataCollectorWorker(self.macro, self._data_workers, self._lambda_roi_workers,
+        self._data_collector = DataCollectorWorker(self.macro, self._data_workers,
                                                    _data_collector_trigger, self._error_queue, self._extra_columns,
                                                    self.motion, self.moveables, self.data)
 
@@ -88,10 +88,14 @@ class CCScan(CSScan):
 
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
             if 'eh_t' in channel_info.label:
-                self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue, _worker_triggers +
-                                                 [_data_collector_trigger], _workers_done_barrier, self.macro)
-            if 'lmbd' in channel_info.label:
-                self._lambda_roi_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
+                self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue,
+                                                 _worker_triggers + [_data_collector_trigger], _workers_done_barrier, self.macro)
+            if 'lmbd_countsroi' in channel_info.label:
+                self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
+                                                           _workers_done_barrier, self._error_queue, self.macro))
+                ind += 1
+            elif channel_info.label == 'lmbd':
+                self._data_workers.append(LambdaWorker(channel_info, _worker_triggers[ind],
                                                            _workers_done_barrier, self._error_queue, self.macro))
                 ind += 1
             else:
@@ -122,11 +126,16 @@ class CCScan(CSScan):
 
         if self._has_lambda:
             _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
-
             _lambda_proxy.StopAcq()
-            _lambda_proxy.TriggerMode = self._original_trigger_mode
-            _lambda_proxy.OperatingMode = self._original_operating_mode
-            _lambda_proxy.FrameNumbers = 1
+
+            _time_out = time.time()
+            while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
+                time.sleep(0.1)
+
+            if _lambda_proxy.State == PyTango.DevState.ON:
+                _lambda_proxy.TriggerMode = self._original_trigger_mode
+                _lambda_proxy.OperatingMode = self._original_operating_mode
+                _lambda_proxy.FrameNumbers = 1
 
     # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint, start_positions, iterate_only=False):
@@ -221,7 +230,7 @@ class CCScan(CSScan):
             new_final_pos = path.final_user_pos + \
                 disp_sign * vmotor.displacement_reach_min_vel
             path.setFinalUserPos(new_final_pos)
-            self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
+            self.macro.debug('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
                                                                                               path.initial_user_pos,
                                                                                               path.final_user_pos))
 
@@ -245,12 +254,21 @@ class CCScan(CSScan):
             _lambda_proxy.StartAcq()
             _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
             _lambdaonlineanalysis_proxy.StartAnalysis()
-            while 'RUNNING' not in _lambda_proxy.Status():
+            _time_out = time.time()
+            while _lambda_proxy.State() != PyTango.DevState.MOVING and time.time() - _time_out < TIMEOUT_LAMBDA:
                 time.sleep(0.1)
                 macro.checkPoint()
 
+            if _lambda_proxy.State() != PyTango.DevState.MOVING:
+                self.macro.output(_lambda_proxy.State())
+                raise RuntimeError('Cannot start LAMBDA')
+
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
+                hook()
+            for hook in macro.getHooks('pre-acq'):
+                hook()
+            for hook in macro.getHooks('pre-move'):
                 hook()
 
         # start move & acquisition as close as possible
@@ -280,7 +298,9 @@ class CCScan(CSScan):
             if debug:
                 self.macro.output("wait for motor to reach max velocity")
             # wait for motor to reach max velocity
-            deltat = self.timestamp_to_start - time.time()
+            deltat = self.timestamp_to_start - time.time()- integ_time
+            if debug:
+                self.macro.output('Delta T: {}'.format(deltat))
             if deltat > 0:
                 time.sleep(deltat)
 
@@ -305,30 +325,36 @@ class CCScan(CSScan):
 
                 # If there is no more time to acquire... stop!
                 elapsed_time = time.time() - acq_start_time
-                if elapsed_time + integ_time > self.acq_duration:
+                if elapsed_time > self.acq_duration + 2 * integ_time:
                     if debug:
                         self.macro.output("Stopping all workers")
                     motion_event.clear()
                     self._timer_worker.stop()
-                    self._data_collector.stop()
-                    for worker in self._data_workers + self._lambda_roi_workers:
-                        worker.stop()
                     break
 
             if debug:
                 self.macro.output("waiting for motion end")
             self.motion_end_event.wait()
+
             if debug:
                 self.macro.output("waiting for data collector finishes")
-
             _timeout_start_time = time.time()
-            while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status != 'finished':
+            while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status == 'collecting':
                 time.sleep(integ_time)
+            else:
+                self._data_collector.stop()
+
+            for worker in self._data_workers:
+                worker.stop()
 
             if time_me:
                 self._timer_worker.time_me()
 
         if hasattr(macro, 'getHooks'):
+            for hook in macro.getHooks('post-acq'):
+                hook()
+            for hook in macro.getHooks('post-move'):
+                hook()
             for hook in macro.getHooks('post-scan'):
                 hook()
 
@@ -349,14 +375,13 @@ class CCScan(CSScan):
 
 class DataCollectorWorker(object):
 
-    def __init__(self, macro, data_workers, lambda_roi_workers, point_trigger, error_queue,
+    def __init__(self, macro, data_workers, point_trigger, error_queue,
                  extra_columns, motion, moveables, data):
 
         self._data_collector_status = 'idle'
         self._last_started_point = -1
         self._macro = macro
         self._data_workers = data_workers
-        self._lambda_roi_workers = lambda_roi_workers
         self._point_trigger = point_trigger
 
         self._extra_columns = extra_columns
@@ -366,10 +391,9 @@ class DataCollectorWorker(object):
         self._step_info = None
 
         self._worker = ExcThread(self._data_collector_loop, 'data_collector', error_queue)
+        self.status = 'waiting'
         self._worker.start()
         self.last_collected_point = -1
-
-        self.status = 'working'
 
         if debug:
             self._macro.output('Data collector started')
@@ -380,9 +404,7 @@ class DataCollectorWorker(object):
         while not self._worker.stopped():
             try:
                 _last_started_point = self._point_trigger.get(block=False)
-            except empty_queue:
-                time.sleep(0.1)
-            else:
+                self.status = 'collecting'
                 if _last_started_point > self.last_collected_point:
                     if debug:
                         self._macro.output("start collecting data for point {}".format(_last_started_point))
@@ -390,7 +412,7 @@ class DataCollectorWorker(object):
                     all_detector_reported = False
                     while not all_detector_reported and not self._worker.stopped():
                         all_detector_reported = True
-                        for worker in self._data_workers + self._lambda_roi_workers:
+                        for worker in self._data_workers:
                             data = worker.data_buffer.get(''.format(_last_started_point))
                             if data is None:
                                 all_detector_reported *= False
@@ -419,8 +441,13 @@ class DataCollectorWorker(object):
 
                         self._data.addRecord(data_line)
                     else:
+                        self.status = 'aborted'
                         if debug:
                             self._macro.output("datacollected was stopped")
+
+            except empty_queue:
+                self.status = 'waiting'
+                time.sleep(0.1)
 
         self.status = 'finished'
         if debug:
@@ -489,7 +516,7 @@ class DataSourceWorker(object):
 
 
 # ----------------------------------------------------------------------
-#                       Channel data reader class
+#                       Lambda ROI reader class
 # ----------------------------------------------------------------------
 
 class LambdaRoiWorker(object):
@@ -542,6 +569,42 @@ class LambdaRoiWorker(object):
     def stop(self):
         self._worker.stop()
 
+
+# ----------------------------------------------------------------------
+#                       Lambda data class
+# ----------------------------------------------------------------------
+
+class LambdaWorker(object):
+    def __init__(self, source_info, trigger, workers_done_barrier, error_queue, macro):
+        # arguments:
+        # channel_info - channels information from measurement group
+        # trigger_queue - threading queue to start measurement
+        # workers_done_barrier - barrier to restart timer
+        # error_queue - queue to report problems
+        # macro - link to marco
+
+        self._trigger = trigger
+        self._macro = macro
+        self._workers_done_barrier = workers_done_barrier
+
+        self.data_buffer = {}
+        self.channel_name = source_info.full_name
+
+        self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
+        self._worker.start()
+
+    def _main_loop(self):
+        _timeit = []
+        while not self._worker.stopped():
+            try:
+                index = self._trigger.get(block=False)
+                self.data_buffer[''.format(index)] = -1
+            except empty_queue:
+                time.sleep(REFRESH_PERIOD)
+
+    def stop(self):
+        self._worker.stop()
+
 # ----------------------------------------------------------------------
 #                       Timer class
 # ----------------------------------------------------------------------
@@ -567,9 +630,9 @@ class TimerWorker(object):
 
     def _main_loop(self):
 
-        while not self._worker.stopped():
+        while not self._worker.stopped() and not self._point > self._macro.nsteps:
             if debug:
-                self._macro.output('Start timer')
+                self._macro.output('Start timer point {}'.format(self._point))
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
             self._timeit.append(time.time() - _start_time)
