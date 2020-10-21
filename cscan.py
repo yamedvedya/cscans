@@ -243,6 +243,11 @@ class CCScan(CSScan):
         if self._has_lambda:
             _lambda_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaDevice'))
             _lambda_proxy.StartAcq()
+            _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
+            _lambdaonlineanalysis_proxy.StartAnalysis()
+            while 'RUNNING' not in _lambda_proxy.Status():
+                time.sleep(0.1)
+                macro.checkPoint()
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
@@ -498,16 +503,14 @@ class LambdaRoiWorker(object):
         # macro - link to marco
 
         self._index = index
-        self._source_info = source_info
         self._trigger = trigger
         self._macro = macro
         self._workers_done_barrier = workers_done_barrier
 
         self.data_buffer = {}
-        tokens = source_info.source.split('/')
-        self._device_proxy = PyTango.DeviceProxy('/'.join(tokens[2:-1]))
-        self._device_attribute = tokens[-1]
-        self.channel_name = '/'.join(tokens[:-1])
+        self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+        self._channel = int(source_info.label[-1])-1
+        self.channel_name = source_info.full_name
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
@@ -518,12 +521,17 @@ class LambdaRoiWorker(object):
             try:
                 index = self._trigger.get(block=False)
                 _start_time = time.time()
-                self.data_buffer[''.format(index)] = getattr(self._device_proxy, self._device_attribute)
-                if debug:
-                    self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
-                        self.channel_name, index, self.data_buffer[''.format(index)]))
-                self._workers_done_barrier.report()
-                _timeit.append(time.time()-_start_time)
+                while not self._worker.stopped():
+                    if self._device_proxy.lastanalyzedframe >= index + 1:
+                        self.data_buffer[''.format(index)] = self._device_proxy.getroiforframe([self._channel, index + 1])
+                        if debug:
+                            self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
+                                self.channel_name, index, self.data_buffer[''.format(index)]))
+                        self._workers_done_barrier.report()
+                        _timeit.append(time.time()-_start_time)
+                        break
+                    else:
+                        time.sleep(REFRESH_PERIOD)
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
 
