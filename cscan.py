@@ -266,10 +266,11 @@ class CCScan(CSScan):
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
                 hook()
-            for hook in macro.getHooks('pre-acq'):
-                hook()
             for hook in macro.getHooks('pre-move'):
                 hook()
+            for hook in macro.getHooks('pre-acq'):
+                hook()
+
 
         # start move & acquisition as close as possible
         # from this point on synchronization becomes critical
@@ -538,9 +539,10 @@ class LambdaRoiWorker(object):
         self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
 
         if 'atten' in source_info.label:
-            self._channel = int(source_info.label[-1])-1
-            self._correction_needed = False
-            self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+            self._channel = int(source_info.label[-7])-1
+            self._macro.output('Roi number {}'.format(self._channel))
+            self._correction_needed = True
+            self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('AttenuatorProxy'))
         else:
             self._channel = int(source_info.label[-1])-1
             self._correction_needed = False
@@ -558,7 +560,10 @@ class LambdaRoiWorker(object):
                 _start_time = time.time()
                 while not self._worker.stopped():
                     if self._device_proxy.lastanalyzedframe >= index + 1:
-                        self.data_buffer[''.format(index)] = self._device_proxy.getroiforframe([self._channel, index + 1])
+                        data = self._device_proxy.getroiforframe([self._channel, index + 1])
+                        if self._correction_needed:
+                            data *= self._attenuator_proxy.Position
+                        self.data_buffer[''.format(index)] = data
                         if debug:
                             self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
                                 self.channel_name, index, self.data_buffer[''.format(index)]))
