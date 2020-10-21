@@ -29,14 +29,14 @@ from sardana.util.motion import MotionPath
 
 verbose = True
 debug = False
-time_me = True
+time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
 SYNC_MOVE = True
 TIMEOUT = 15
 REFRESH_PERIOD = 5e-4
 
-__all__ = ['dcscan']
+__all__ = ['dcscan', 'acscan', 'lambda_senv']
 
 # ----------------------------------------------------------------------
 #     Child of CSScan with modified functionality
@@ -54,6 +54,7 @@ class CCScan(CSScan):
                        'eh_t02': 'p23/dgg2/eh.02'}
 
         # Parsing measurement group:
+        self._has_lambda = False
         num_counters = 0
         _worker_triggers = []
         _lambda_settled = False
@@ -65,6 +66,8 @@ class CCScan(CSScan):
             else:
                 if not _lambda_settled:
                     self._original_trigger_mode, self._original_operating_mode = self._setup_lambda()
+                    self._has_lambda = True
+                    _lambda_settled = True
 
         # DataWorkers array
         self._lambda_roi_workers = []
@@ -117,12 +120,13 @@ class CCScan(CSScan):
     def do_restore(self):
         super(CCScan, self).do_restore()
 
-        _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
+        if self._has_lambda:
+            _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
 
-        _lambda_proxy.StopAcq()
-        _lambda_proxy.TriggerMode = self._original_trigger_mode
-        _lambda_proxy.OperatingMode = self._original_operating_mode
-        _lambda_proxy.FrameNumbers = 1
+            _lambda_proxy.StopAcq()
+            _lambda_proxy.TriggerMode = self._original_trigger_mode
+            _lambda_proxy.OperatingMode = self._original_operating_mode
+            _lambda_proxy.FrameNumbers = 1
 
     # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint, start_positions, iterate_only=False):
@@ -236,8 +240,9 @@ class CCScan(CSScan):
         motion_event = self.motion_event
         integ_time = 0
 
-        _lambda_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaDevice'))
-        _lambda_proxy.StartAcq()
+        if self._has_lambda:
+            _lambda_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaDevice'))
+            _lambda_proxy.StartAcq()
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
@@ -450,7 +455,7 @@ class DataSourceWorker(object):
         tokens = source_info.source.split('/')
         self._device_proxy = PyTango.DeviceProxy('/'.join(tokens[2:-1]))
         self._device_attribute = tokens[-1]
-        self.channel_name = '/'.join(tokens[:-1])
+        self.channel_name = source_info.full_name
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
@@ -692,12 +697,21 @@ class acscan(Macro, scancl):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        self.name = 'ascancl'
-        self._prepare('ascan', motor, start_pos, final_pos, nb_steps, integ_time, **opts)
+        self.name = 'dscancl'
+
+        self._prepare('ascan', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
+                      nb_steps, integ_time, **opts)
 
     def run(self, *args):
         for step in self._gScan.step_scan():
             yield step
+
+class lambda_senv(Macro):
+    """ Sets default environment variables """
+
+    def run(self):
+        self.setEnv("LambdaDevice", "hasep23oh:10000/p23/lambda/01")
+        self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
 
 # ----------------------------------------------------------------------
 #                       Auxiliary classes
