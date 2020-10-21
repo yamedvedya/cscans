@@ -90,14 +90,17 @@ class CCScan(CSScan):
             if 'eh_t' in channel_info.label:
                 self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue,
                                                  _worker_triggers + [_data_collector_trigger], _workers_done_barrier, self.macro)
-            if 'lmbd_countsroi' in channel_info.label:
-                self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
-                                                           _workers_done_barrier, self._error_queue, self.macro))
-                ind += 1
-            elif channel_info.label == 'lmbd':
-                self._data_workers.append(LambdaWorker(channel_info, _worker_triggers[ind],
-                                                           _workers_done_barrier, self._error_queue, self.macro))
-                ind += 1
+            if 'lmbd' in channel_info.label:
+                if 'lmbd_countsroi' in channel_info.label:
+                    self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
+                                                               _workers_done_barrier, self._error_queue, self.macro))
+                    ind += 1
+                elif channel_info.label == 'lmbd':
+                    self._data_workers.append(LambdaWorker(channel_info, _worker_triggers[ind],
+                                                               _workers_done_barrier, self._error_queue, self.macro))
+                    ind += 1
+                else:
+                    raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
             else:
                 self._data_workers.append(DataSourceWorker(ind, channel_info, _worker_triggers[ind],
                                                            _workers_done_barrier, self._error_queue, self.macro))
@@ -675,6 +678,8 @@ class scancl(object):
 
     def _prepare(self, mode, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        self.do_scan = True
+
         # save the user parameters
         self.mode = mode
         self.motors = motor
@@ -682,6 +687,14 @@ class scancl(object):
         self.final_pos = final_pos
         self.nsteps = nb_steps
         self.integ_time = integ_time
+
+        if self.integ_time < 0.1:
+            options = "Yes", "No"
+            run_or_not = self.input("The {} integration time is too short for continuous scans. Abort or continue?",
+                                    data_type=options, allow_multiple=False, title="Favorites", default_value='No')
+            if run_or_not == 'No':
+                self.do_scan = False
+                return
 
         if self.mode == 'dscan':
             self._motion = self.getMotion([m.getName() for m in self.motors])
@@ -769,8 +782,9 @@ class dcscan(Macro, scancl):
                       nb_steps, integ_time, **opts)
 
     def run(self, *args):
-        for step in self._gScan.step_scan():
-            yield step
+        if self.do_scan:
+            for step in self._gScan.step_scan():
+                yield step
 
 class acscan(Macro, scancl):
 
@@ -804,8 +818,9 @@ class acscan(Macro, scancl):
                       nb_steps, integ_time, **opts)
 
     def run(self, *args):
-        for step in self._gScan.step_scan():
-            yield step
+        if self.do_scan:
+            for step in self._gScan.step_scan():
+                yield step
 
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment
