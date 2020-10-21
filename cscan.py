@@ -536,7 +536,15 @@ class LambdaRoiWorker(object):
 
         self.data_buffer = {}
         self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
-        self._channel = int(source_info.label[-1])-1
+
+        if 'atten' in source_info.label:
+            self._channel = int(source_info.label[-1])-1
+            self._correction_needed = False
+            self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+        else:
+            self._channel = int(source_info.label[-1])-1
+            self._correction_needed = False
+
         self.channel_name = source_info.full_name
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
