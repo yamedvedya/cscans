@@ -768,6 +768,7 @@ class scancl(object):
             self.output("Returning to start positions...")
             self._motion.move(self.originalPositions)
 
+
 # ----------------------------------------------------------------------
 #                       These classes are called by user
 # ----------------------------------------------------------------------
@@ -780,7 +781,7 @@ class dcscan(Macro, scancl):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'dcscan', 'allowsHooks': ('pre-scan', 'pre-move',
+    hints = {'scan': 'dscan', 'allowsHooks': ('pre-scan', 'pre-move',
                                                'post-move', 'pre-acq',
                                                'post-acq',
                                                'post-scan')}
@@ -797,7 +798,7 @@ class dcscan(Macro, scancl):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        self.name = 'dcscan'
+        self.name = 'dscan'
 
         self._prepare('dscan', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
                       nb_steps, integ_time, **opts)
@@ -807,6 +808,9 @@ class dcscan(Macro, scancl):
             for step in self._gScan.step_scan():
                 yield step
 
+    def getCommand(self):
+        command = super(dcscan, self).getCommand()
+        return 'dscan ' + ' '.join(command.split()[1:])
 
 class d2cscan(Macro, scancl):
     # this is used to indicate other codes that the macro is a scan
@@ -831,7 +835,7 @@ class d2cscan(Macro, scancl):
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
-        self.name = 'd2cscan'
+        self.name = 'd2scan'
 
         self._prepare('dscan', [motor1, motor2], np.array([start_pos1, start_pos2], dtype='d'),
                       np.array([final_pos1, final_pos2], dtype='d'),
@@ -842,6 +846,10 @@ class d2cscan(Macro, scancl):
             for step in self._gScan.step_scan():
                 yield step
 
+    def getCommand(self):
+        command = super(d2cscan, self).getCommand()
+        return 'd2scan ' + ' '.join(command.split()[1:])
+
 class acscan(Macro, scancl):
 
     """ Performs a continuous scan taking current Active Measurement Group
@@ -850,7 +858,7 @@ class acscan(Macro, scancl):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'acscan', 'allowsHooks': ('pre-scan', 'pre-move',
+    hints = {'scan': 'ascan', 'allowsHooks': ('pre-scan', 'pre-move',
                                                'post-move', 'pre-acq',
                                                'post-acq',
                                                'post-scan')}
@@ -868,7 +876,7 @@ class acscan(Macro, scancl):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        self.name = 'acscan'
+        self.name = 'ascan'
 
         self._prepare('ascan', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
                       nb_steps, integ_time, **opts)
@@ -878,10 +886,14 @@ class acscan(Macro, scancl):
             for step in self._gScan.step_scan():
                 yield step
 
+    def getCommand(self):
+        command = super(acscan, self).getCommand()
+        return 'ascan ' + ' '.join(command.split()[1:])
+
 
 class a2cscan(Macro, scancl):
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'a2cscan', 'allowsHooks': ('pre-scan', 'pre-move',
+    hints = {'scan': 'a2scan', 'allowsHooks': ('pre-scan', 'pre-move',
                                                 'post-move', 'pre-acq',
                                                 'post-acq',
                                                 'post-scan')}
@@ -902,7 +914,7 @@ class a2cscan(Macro, scancl):
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
-        self.name = 'a2cscan'
+        self.name = 'a2scan'
 
         self._prepare('ascan', [motor1, motor2], np.array([start_pos1, start_pos2], dtype='d'),
                       np.array([final_pos1, final_pos2], dtype='d'),
@@ -912,6 +924,10 @@ class a2cscan(Macro, scancl):
         if self.do_scan:
             for step in self._gScan.step_scan():
                 yield step
+
+    def getCommand(self):
+        command = super(a2cscan, self).getCommand()
+        return 'a2scan ' + ' '.join(command.split()[1:])
 
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment
