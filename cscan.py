@@ -28,8 +28,8 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 
-verbose = False
-debug = False
+verbose = True
+debug = True
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
@@ -218,8 +218,8 @@ class CCScan(CSScan):
                 disp_sign * vmotor.displacement_reach_min_vel
             path.setFinalUserPos(new_final_pos)
             self.macro.debug('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
-                                                                                              path.initial_user_pos,
-                                                                                              path.final_user_pos))
+                                                                                             path.initial_user_pos,
+                                                                                             path.final_user_pos))
 
         return ideal_paths, delta_start, cruise_duration
 
@@ -252,8 +252,6 @@ class CCScan(CSScan):
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
-                hook()
-            for hook in macro.getHooks('pre-move'):
                 hook()
             for hook in macro.getHooks('pre-acq'):
                 hook()
@@ -309,6 +307,10 @@ class CCScan(CSScan):
                 else:
                     if verbose:
                         self.macro.output('Got an exception {}'.format(err))
+                    self._timer_worker.stop()
+                    self._data_collector.stop()
+                    for worker in self._data_workers:
+                        worker.stop()
                     raise RuntimeError(err)
 
                 # If there is no more time to acquire... stop!
@@ -341,8 +343,6 @@ class CCScan(CSScan):
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('post-acq'):
                 hook()
-            for hook in macro.getHooks('post-move'):
-                hook()
             for hook in macro.getHooks('post-scan'):
                 hook()
 
@@ -356,18 +356,9 @@ class CCScan(CSScan):
         if not scream:
             yield 100.0
 
+    # ----------------------------------------------------------------------
     def do_restore(self):
         self._restore_motors()
-
-        try:
-            if hasattr(self.macro, 'do_restore'):
-                self.macro.do_restore()
-        except Exception:
-            msg = ("Failed to execute 'do_restore' method of the %s macro" %
-                   self.macro.getName())
-            self.macro.debug(msg)
-            self.macro.debug('Details: ', exc_info=True)
-            raise ScanException('error while restoring a backup')
 
         if self._has_lambda:
             _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
@@ -381,13 +372,32 @@ class CCScan(CSScan):
                 _lambda_proxy.TriggerMode = self._original_trigger_mode
                 _lambda_proxy.OperatingMode = self._original_operating_mode
                 _lambda_proxy.FrameNumbers = 1
+            else:
+                self.macro.output('Cannot reset Lambda! Check the settings.')
 
+            _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
+            _lambdaonlineanalysis_proxy.StartAnalysis()
+
+            while _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
+                time.sleep(0.1)
+
+            if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
+                self.macro.output('Cannot stop LambdaOnlineAnalysis!')
+
+        try:
+            if hasattr(self.macro, 'do_restore'):
+                self.macro.do_restore()
+        except Exception:
+            msg = ("Failed to execute 'do_restore' method of the %s macro" %
+                   self.macro.getName())
+            self.macro.debug(msg)
+            self.macro.debug('Details: ', exc_info=True)
+            raise ScanException('error while restoring a backup')
 
 
 # ----------------------------------------------------------------------
 #                       Channel data reader class
 # ----------------------------------------------------------------------
-
 
 class DataCollectorWorker(object):
 
@@ -657,7 +667,7 @@ class TimerWorker(object):
 
     def _main_loop(self):
 
-        while not self._worker.stopped() and not self._point > self._macro.nsteps:
+        while not self._worker.stopped():
             if debug:
                 self._macro.output('Start timer point {}'.format(self._point))
             _start_time = time.time()
