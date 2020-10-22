@@ -22,6 +22,7 @@ import time
 
 from sardana.macroserver.scan import *
 from sardana.macroserver.macro import *
+from sardana.macroserver.scan.gscan import ScanException
 from sardana.macroserver.macros.scan import getCallable, UNCONSTRAINED
 from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
@@ -37,7 +38,7 @@ TIMEOUT = 15
 TIMEOUT_LAMBDA = 1
 REFRESH_PERIOD = 5e-4
 
-__all__ = ['dcscan', 'acscan', 'lambda_senv']
+__all__ = ['dcscan', 'acscan', 'd2cscan', 'a2cscan','cscan_senv']
 
 # ----------------------------------------------------------------------
 #     Child of CSScan with modified functionality
@@ -123,24 +124,7 @@ class CCScan(CSScan):
 
         return _original_trigger_mode, _original_operation_mode
 
-    # ----------------------------------------------------------------------
-    def do_restore(self):
-        super(CCScan, self).do_restore()
-
-        if self._has_lambda:
-            _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
-            _lambda_proxy.StopAcq()
-
-            _time_out = time.time()
-            while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
-                time.sleep(0.1)
-
-            if _lambda_proxy.State == PyTango.DevState.ON:
-                _lambda_proxy.TriggerMode = self._original_trigger_mode
-                _lambda_proxy.OperatingMode = self._original_operating_mode
-                _lambda_proxy.FrameNumbers = 1
-
-    # ----------------------------------------------------------------------
+     # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint, start_positions, iterate_only=False):
         ### This function basically repeats the original, The only difference is that "slow_down" factor changed
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
@@ -371,6 +355,34 @@ class CCScan(CSScan):
 
         if not scream:
             yield 100.0
+
+    def do_restore(self):
+        self._restore_motors()
+
+        try:
+            if hasattr(self.macro, 'do_restore'):
+                self.macro.do_restore()
+        except Exception:
+            msg = ("Failed to execute 'do_restore' method of the %s macro" %
+                   self.macro.getName())
+            self.macro.debug(msg)
+            self.macro.debug('Details: ', exc_info=True)
+            raise ScanException('error while restoring a backup')
+
+        if self._has_lambda:
+            _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
+            _lambda_proxy.StopAcq()
+
+            _time_out = time.time()
+            while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
+                time.sleep(0.1)
+
+            if _lambda_proxy.State == PyTango.DevState.ON:
+                _lambda_proxy.TriggerMode = self._original_trigger_mode
+                _lambda_proxy.OperatingMode = self._original_operating_mode
+                _lambda_proxy.FrameNumbers = 1
+
+
 
 # ----------------------------------------------------------------------
 #                       Channel data reader class
@@ -766,7 +778,7 @@ class dcscan(Macro, scancl):
     env = ['ActiveMntGrp']
 
     param_def = [
-        ['motor',           Type.Motor,     None,   'Motor to move'],
+        ['motor',           Type.Moveable,  None,   'Motor to move'],
         ['start_pos',       Type.Float,     None,   'Scan start position'],
         ['final_pos',       Type.Float,     None,   'Scan final position'],
         ['nb_steps',        Type.Integer,   None,   'Nb of steps'],
@@ -778,6 +790,41 @@ class dcscan(Macro, scancl):
         self.name = 'dcscan'
 
         self._prepare('dscan', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
+                      nb_steps, integ_time, **opts)
+
+    def run(self, *args):
+        if self.do_scan:
+            for step in self._gScan.step_scan():
+                yield step
+
+
+class d2cscan(Macro, scancl):
+    # this is used to indicate other codes that the macro is a scan
+    hints = {'scan': 'd2cscan', 'allowsHooks': ('pre-scan', 'pre-move',
+                                                'post-move', 'pre-acq',
+                                                'post-acq',
+                                                'post-scan')}
+
+    env = ['ActiveMntGrp']
+
+    param_def = [
+        ['motor1',          Type.Moveable,  None, 'Motor 1 to move'],
+        ['start_pos1',      Type.Float,     None, 'Scan start position 1'],
+        ['final_pos1',      Type.Float,     None, 'Scan final position 1'],
+        ['motor2',          Type.Moveable,  None, 'Motor 2 to move'],
+        ['start_pos2',      Type.Float,     None, 'Scan start position 2'],
+        ['final_pos2',      Type.Float,     None, 'Scan final position 2'],
+        ['nr_interv',       Type.Integer,   None, 'Nb of scan intervals'],
+        ['integ_time',      Type.Float,     None, 'Integration time']
+    ]
+
+    def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
+                final_pos2, nb_steps, integ_time, **opts):
+
+        self.name = 'd2cscan'
+
+        self._prepare('dscan', [motor1, motor2], np.array([start_pos1, start_pos2], dtype='d'),
+                      np.array([final_pos1, final_pos2], dtype='d'),
                       nb_steps, integ_time, **opts)
 
     def run(self, *args):
@@ -801,7 +848,7 @@ class acscan(Macro, scancl):
     env = ['ActiveMntGrp']
 
     param_def = [
-        ['motor',           Type.Motor,     None,   'Motor to move'],
+        ['motor',           Type.Moveable,  None,   'Motor to move'],
         ['start_pos',       Type.Float,     None,   'Scan start position'],
         ['final_pos',       Type.Float,     None,   'Scan final position'],
         ['nb_steps',        Type.Integer,   None,   'Nb of steps'],
@@ -821,11 +868,46 @@ class acscan(Macro, scancl):
             for step in self._gScan.step_scan():
                 yield step
 
+
+class a2cscan(Macro, scancl):
+    # this is used to indicate other codes that the macro is a scan
+    hints = {'scan': 'a2cscan', 'allowsHooks': ('pre-scan', 'pre-move',
+                                                'post-move', 'pre-acq',
+                                                'post-acq',
+                                                'post-scan')}
+
+    env = ['ActiveMntGrp']
+
+    param_def = [
+        ['motor1',          Type.Moveable,  None, 'Motor 1 to move'],
+        ['start_pos1',      Type.Float,     None, 'Scan start position 1'],
+        ['final_pos1',      Type.Float,     None, 'Scan final position 1'],
+        ['motor2',          Type.Moveable,  None, 'Motor 2 to move'],
+        ['start_pos2',      Type.Float,     None, 'Scan start position 2'],
+        ['final_pos2',      Type.Float,     None, 'Scan final position 2'],
+        ['nr_interv',       Type.Integer,   None, 'Nb of scan intervals'],
+        ['integ_time',      Type.Float,     None, 'Integration time']
+    ]
+
+    def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
+                final_pos2, nb_steps, integ_time, **opts):
+
+        self.name = 'a2cscan'
+
+        self._prepare('ascan', [motor1, motor2], np.array([start_pos1, start_pos2], dtype='d'),
+                      np.array([final_pos1, final_pos2], dtype='d'),
+                      nb_steps, integ_time, **opts)
+
+    def run(self, *args):
+        if self.do_scan:
+            for step in self._gScan.step_scan():
+                yield step
+
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment
 # ----------------------------------------------------------------------
 
-class lambda_senv(Macro):
+class cscan_senv(Macro):
     """ Sets default environment variables """
 
     def run(self):
