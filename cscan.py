@@ -67,9 +67,8 @@ class CCScan(CSScan):
                 num_counters += 1
             else:
                 if not _lambda_settled:
-                    self._original_trigger_mode, self._original_operating_mode = self._setup_lambda()
                     self._has_lambda = True
-                    _lambda_settled = True
+                    self._original_trigger_mode, self._original_operating_mode = None, None
 
         # DataWorkers array
         self._data_workers = []
@@ -114,13 +113,40 @@ class CCScan(CSScan):
     def _setup_lambda(self):
         _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
 
+        _original_operation_mode = _lambda_proxy.OperatingMode
+        _lambda_proxy.OperatingMode = 'ContinuousReadWrite'
+        time.sleep(1)
+        while _lambda_proxy.State() == PyTango.DevState.MOVING:
+            time.sleep(0.01)
+
         _original_trigger_mode = _lambda_proxy.TriggerMode
         _lambda_proxy.TriggerMode = 2
 
-        _original_operation_mode = _lambda_proxy.OperatingMode
-        _lambda_proxy.OperatingMode = 'ContinuousReadWrite'
+        _lambda_proxy.FrameNumbers = max(self.macro.nsteps, 1000)
 
-        _lambda_proxy.FrameNumbers = self.macro.nsteps
+        _lambda_proxy.StartAcq()
+
+        _time_out = time.time()
+        while _lambda_proxy.State() != PyTango.DevState.MOVING and time.time() - _time_out < TIMEOUT_LAMBDA:
+            time.sleep(0.1)
+            macro.checkPoint()
+
+        if _lambda_proxy.State() != PyTango.DevState.MOVING:
+            self.macro.output(_lambda_proxy.State())
+            raise RuntimeError('Cannot start LAMBDA')
+
+        if debug:
+            self.macro.output('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
+
+        _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
+        _lambdaonlineanalysis_proxy.Init()
+        _lambdaonlineanalysis_proxy.StartAnalysis()
+
+        if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.MOVING:
+                raise RuntimeError('Cannot start LambdaOnlineAnalysis')
+
+        if debug:
+            self.macro.output('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
 
         return _original_trigger_mode, _original_operation_mode
 
@@ -229,32 +255,22 @@ class CCScan(CSScan):
         if debug:
             self.macro.output("scan loop() entering...")
 
-        self.macro.output("".format(dir(self)))
         macro = self.macro
         manager = macro.getManager()
         scream = False
         motion_event = self.motion_event
         integ_time = 0
 
-        if self._has_lambda:
-            _lambda_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaDevice'))
-            _lambda_proxy.StartAcq()
-            _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
-            _lambdaonlineanalysis_proxy.StartAnalysis()
-            _time_out = time.time()
-            while _lambda_proxy.State() != PyTango.DevState.MOVING and time.time() - _time_out < TIMEOUT_LAMBDA:
-                time.sleep(0.1)
-                macro.checkPoint()
-
-            if _lambda_proxy.State() != PyTango.DevState.MOVING:
-                self.macro.output(_lambda_proxy.State())
-                raise RuntimeError('Cannot start LAMBDA')
-
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
                 hook()
+
+        if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-acq'):
                 hook()
+
+        if self._has_lambda:
+            self._original_trigger_mode, self._original_operating_mode = self._setup_lambda()
 
 
         # start move & acquisition as close as possible
@@ -368,15 +384,19 @@ class CCScan(CSScan):
             while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
                 time.sleep(0.1)
 
-            if _lambda_proxy.State == PyTango.DevState.ON:
+            if _lambda_proxy.State() == PyTango.DevState.ON:
                 _lambda_proxy.TriggerMode = self._original_trigger_mode
                 _lambda_proxy.OperatingMode = self._original_operating_mode
+                time.sleep(1)
+                while _lambda_proxy.State() == PyTango.DevState.MOVING:
+                    time.sleep(0.01)
                 _lambda_proxy.FrameNumbers = 1
             else:
                 self.macro.output('Cannot reset Lambda! Check the settings.')
 
             _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
-            _lambdaonlineanalysis_proxy.StartAnalysis()
+            _lambdaonlineanalysis_proxy.StopAnalysis()
+            time.sleep(1)
 
             while _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
                 time.sleep(0.1)
@@ -695,7 +715,7 @@ class TimerWorker(object):
 #                       Main scan class
 # ----------------------------------------------------------------------
 
-class scancl(object):
+class scancl(Hookable):
 
     def _prepare(self, mode, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
