@@ -28,8 +28,8 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 
-verbose = True
-debug = True
+verbose = False
+debug = False
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
@@ -110,20 +110,11 @@ class CCScan(CSScan):
             self.macro.output("__init__ finished")
 
     # ----------------------------------------------------------------------
-    def _setup_lambda(self):
+    def _setup_lambda(self, integ_time):
         _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
-
-        _original_operation_mode = _lambda_proxy.OperatingMode
-        _lambda_proxy.OperatingMode = 'ContinuousReadWrite'
-        time.sleep(1)
-        while _lambda_proxy.State() == PyTango.DevState.MOVING:
-            time.sleep(0.01)
-
-        _original_trigger_mode = _lambda_proxy.TriggerMode
         _lambda_proxy.TriggerMode = 2
-
+        _lambda_proxy.ShutterTime = integ_time*1000
         _lambda_proxy.FrameNumbers = max(self.macro.nsteps, 1000)
-
         _lambda_proxy.StartAcq()
 
         _time_out = time.time()
@@ -139,7 +130,9 @@ class CCScan(CSScan):
             self.macro.output('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
 
         _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
-        _lambdaonlineanalysis_proxy.Init()
+        if _lambdaonlineanalysis_proxy.State() == PyTango.DevState.MOVING:
+            _lambdaonlineanalysis_proxy.StopAnalysis()
+
         _lambdaonlineanalysis_proxy.StartAnalysis()
 
         if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.MOVING:
@@ -147,8 +140,6 @@ class CCScan(CSScan):
 
         if debug:
             self.macro.output('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
-
-        return _original_trigger_mode, _original_operation_mode
 
      # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint, start_positions, iterate_only=False):
@@ -269,25 +260,23 @@ class CCScan(CSScan):
             for hook in macro.getHooks('pre-acq'):
                 hook()
 
-        if self._has_lambda:
-            self._original_trigger_mode, self._original_operating_mode = self._setup_lambda()
+        # get integ_time for this loop
+        try:
+            _, step_info = self.period_steps.next()
+            self._data_collector.set_new_step_info(step_info)
+            integ_time = step_info['integ_time']
+            self._timer_worker.set_new_period(integ_time)
+        except StopIteration:
+            self._all_waypoints_finished = True
 
+        if self._has_lambda:
+            self._setup_lambda(integ_time)
 
         # start move & acquisition as close as possible
         # from this point on synchronization becomes critical
         manager.add_job(self.go_through_waypoints)
 
         while not self._all_waypoints_finished:
-
-            # get integ_time for this loop
-            try:
-                _, step_info = self.period_steps.next()
-                self._data_collector.set_new_step_info(step_info)
-            except StopIteration:
-                self._all_waypoints_finished = True
-                break
-            integ_time = step_info['integ_time']
-            self._timer_worker.set_new_period(integ_time)
 
             if debug:
                 self.macro.output("waiting for motion event")
@@ -377,6 +366,17 @@ class CCScan(CSScan):
         self._restore_motors()
 
         if self._has_lambda:
+            _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
+            _lambdaonlineanalysis_proxy.StopAnalysis()
+            time.sleep(0.1)
+
+            _time_out = time.time()
+            while _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
+                time.sleep(0.1)
+
+            if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
+                self.macro.output('Cannot stop LambdaOnlineAnalysis!')
+
             _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
             _lambda_proxy.StopAcq()
 
@@ -385,24 +385,9 @@ class CCScan(CSScan):
                 time.sleep(0.1)
 
             if _lambda_proxy.State() == PyTango.DevState.ON:
-                _lambda_proxy.TriggerMode = self._original_trigger_mode
-                _lambda_proxy.OperatingMode = self._original_operating_mode
-                time.sleep(1)
-                while _lambda_proxy.State() == PyTango.DevState.MOVING:
-                    time.sleep(0.01)
                 _lambda_proxy.FrameNumbers = 1
             else:
                 self.macro.output('Cannot reset Lambda! Check the settings.')
-
-            _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
-            _lambdaonlineanalysis_proxy.StopAnalysis()
-            time.sleep(1)
-
-            while _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
-                time.sleep(0.1)
-
-            if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
-                self.macro.output('Cannot stop LambdaOnlineAnalysis!')
 
         try:
             if hasattr(self.macro, 'do_restore'):
@@ -723,9 +708,16 @@ class scancl(Hookable):
 
         # save the user parameters
         self.mode = mode
-        self.motors = motor
-        self.start_pos = start_pos
-        self.final_pos = final_pos
+        self.motors = []
+        self.start_pos = []
+        self.final_pos = []
+
+        for mot, start, final in zip(motor, start_pos, final_pos):
+            new_mot, new_start, new_final = self._parse_motors(mot, start, final)
+            self.motors.append(new_mot)
+            self.start_pos.append(new_start)
+            self.final_pos.append(new_final)
+
         self.nsteps = nb_steps
         self.integ_time = integ_time
 
@@ -788,6 +780,44 @@ class scancl(Hookable):
             self.output("Returning to start positions...")
             self._motion.move(self.originalPositions)
 
+    def _parse_motors(self, motor, start_pos, end_pos):
+        _motor_proxy = PyTango.DeviceProxy(PyTango.DeviceProxy(motor.getName()).TangoDevice)
+        if _motor_proxy.info().dev_class == 'VmExecutor':
+            self.output("VM {} found".format(motor.getName()))
+
+            sub_devices = _motor_proxy.get_property('__SubDevices')['__SubDevices']
+            tango_motors = [device.split('/')[2].replace('.', '/') for device in sub_devices if 'vmexecutor' not in device]
+
+            motors = []
+            all_motors = self.getMotors()
+            for motor_name in tango_motors:
+                for key, value in all_motors.items():
+                    if motor_name in key:
+                        motors.append(value)
+
+            _motor_proxy.PositionSim = start_pos
+            _sim_pos = _motor_proxy.ResultSim
+            new_start_pos = []
+            for entry in _sim_pos:
+                value = float(entry.split(':')[1].strip())
+                if not np.isclose(value, start_pos):
+                    new_start_pos.append(value)
+
+            _motor_proxy.PositionSim = end_pos
+            _sim_pos = _motor_proxy.ResultSim
+            new_end_pos = []
+            for entry in _sim_pos:
+                value = float(entry.split(':')[1].strip())
+                if not np.isclose(value, start_pos):
+                    new_end_pos.append(value)
+
+            self.output('Calculated positions for VM {} :'.format(motor.getName()))
+            for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
+                self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
+
+            return motors, new_start_pos, new_end_pos
+        else:
+            return motor, start_pos, end_pos
 
 # ----------------------------------------------------------------------
 #                       These classes are called by user
