@@ -55,6 +55,8 @@ class CCScan(CSScan):
         timer_names = {'eh_t01': 'p23/dgg2/eh.01',
                        'eh_t02': 'p23/dgg2/eh.02'}
 
+        counter_names = {'sis3820': 'p23/counter/eh'}
+
         # Parsing measurement group:
         self._has_lambda = False
         self._integration_time_correction = 1
@@ -62,6 +64,7 @@ class CCScan(CSScan):
         num_counters = 0
         _worker_triggers = []
         _lambda_settled = False
+        _counters = []
 
         for ind, channel_info in enumerate(self.measurement_group.getChannelsEnabledInfo()):
             _worker_triggers.append(Queue())
@@ -71,6 +74,10 @@ class CCScan(CSScan):
                 if not _lambda_settled:
                     self._has_lambda = True
                     self._original_trigger_mode, self._original_operating_mode = None, None
+
+            for counter_name, tango_name in counter_names.items():
+                if counter_name in channel_info.full_name:
+                    _counters.append([tango_name, int(channel_info.full_name.split('/')[-1])])
 
         # DataWorkers array
         self._data_workers = []
@@ -90,8 +97,9 @@ class CCScan(CSScan):
 
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
             if 'eh_t' in channel_info.label:
-                self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue,
-                                                 _worker_triggers + [_data_collector_trigger], _workers_done_barrier, self.macro)
+                self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue, _counters,
+                                                 _worker_triggers + [_data_collector_trigger], _workers_done_barrier,
+                                                 self.macro)
             if 'lmbd' in channel_info.label:
                 if 'lmbd_countsroi' in channel_info.label:
                     self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
@@ -657,7 +665,7 @@ class LambdaWorker(object):
 # ----------------------------------------------------------------------
 
 class TimerWorker(object):
-    def __init__(self, timer_name, error_queue, triggers, workers_done_barrier, macro):
+    def __init__(self, timer_name, error_queue, counters, triggers, workers_done_barrier, macro):
         #parameters:
         # timer_name: tango name of timer
         # error_queue: queue to report about problems
@@ -673,6 +681,10 @@ class TimerWorker(object):
         self._macro = macro
         self._timeit = []
 
+        self._counter_proxies = []
+        for tango_name, channel in counters:
+            self._counter_proxies.append(PyTango.DeviceProxy('{}.{}'.format(tango_name, channel)))
+
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
     def _main_loop(self):
@@ -681,6 +693,9 @@ class TimerWorker(object):
             if debug:
                 self._macro.output('Start timer point {}'.format(self._point))
             _start_time = time.time()
+            for proxy in self._counter_proxies:
+                proxy.Reset()
+
             self._device_proxy.StartAndWaitForTimer()
             self._timeit.append(time.time() - _start_time)
             for trigger in self._triggers:
@@ -788,9 +803,10 @@ class scancl(Hookable):
             self._motion.move(self.originalPositions)
 
     def _parse_motors(self, motor, start_pos, end_pos):
-        _motor_proxy = PyTango.DeviceProxy(PyTango.DeviceProxy(motor.getName()).TangoDevice)
-        if _motor_proxy.info().dev_class == 'VmExecutor':
-            self.output("VM {} found".format(motor.getName()))
+        try:
+            _motor_proxy = PyTango.DeviceProxy(PyTango.DeviceProxy(motor.getName()).TangoDevice)
+            if _motor_proxy.info().dev_class == 'VmExecutor':
+                self.output("VM {} found".format(motor.getName()))
 
             try:
                 sub_devices = _motor_proxy.get_property('__SubDevices')['__SubDevices']
@@ -835,12 +851,14 @@ class scancl(Hookable):
                 return motors, new_start_pos, new_end_pos
             except:
                 raise RuntimeError('Cannot parse VM to components, the cscan cannot be executed')
-        else:
+            else:
+                return [motor], [start_pos], [end_pos]
+        except AttributeError:
             return [motor], [start_pos], [end_pos]
 
     def _get_command(self, command):
         for motor, start_pos, final_pos in zip(self.motors, self.start_pos, self.final_pos):
-            command += ' '.join([motor, start_pos, final_pos])
+            command += ' '.join([motor.getName(), str(start_pos), str(final_pos)])
         command += ' {} {}'.format(self.nsteps, self.integ_time)
         return command
 # ----------------------------------------------------------------------
