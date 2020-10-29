@@ -792,37 +792,49 @@ class scancl(Hookable):
         if _motor_proxy.info().dev_class == 'VmExecutor':
             self.output("VM {} found".format(motor.getName()))
 
-            sub_devices = _motor_proxy.get_property('__SubDevices')['__SubDevices']
-            tango_motors = [device.split('/')[2].replace('.', '/') for device in sub_devices if 'vmexecutor' not in device]
+            try:
+                sub_devices = _motor_proxy.get_property('__SubDevices')['__SubDevices']
+                tango_motors = [device.split('/')[2] for device in sub_devices if 'vmexecutor' not in device]
+                channel_names = [device.replace('.', '/') for device in tango_motors]
 
-            motors = []
-            all_motors = self.getMotors()
-            for motor_name in tango_motors:
-                for key, value in all_motors.items():
-                    if motor_name in key:
-                        motors.append(value)
+                self.output('tango_motors {}'.format(tango_motors))
+                self.output('channel_names {}'.format(channel_names))
 
-            _motor_proxy.PositionSim = start_pos
-            _sim_pos = _motor_proxy.ResultSim
-            new_start_pos = []
-            for entry in _sim_pos:
-                value = float(entry.split(':')[1].strip())
-                if not np.isclose(value, start_pos):
-                    new_start_pos.append(value)
+                _motor_proxy.PositionSim = start_pos
+                _sim_start_pos = _motor_proxy.ResultSim
 
-            _motor_proxy.PositionSim = end_pos
-            _sim_pos = _motor_proxy.ResultSim
-            new_end_pos = []
-            for entry in _sim_pos:
-                value = float(entry.split(':')[1].strip())
-                if not np.isclose(value, start_pos):
-                    new_end_pos.append(value)
+                _motor_proxy.PositionSim = end_pos
+                _sim_end_pos = _motor_proxy.ResultSim
 
-            self.output('Calculated positions for VM {} :'.format(motor.getName()))
-            for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
-                self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
+                motors = []
+                new_start_pos = []
+                new_end_pos = []
 
-            return motors, new_start_pos, new_end_pos
+                all_motors = self.getMotors()
+                for motor_name, channel_name in zip(tango_motors, channel_names):
+                    self.output('Looking for {}'.format(channel_name))
+                    for key, value in all_motors.items():
+                        if channel_name in key:
+                            self.output('Found {}'.format(value))
+                            motors.append(value)
+                            for entry in _sim_start_pos:
+                                tockens = entry.split(':')
+                                self.output('Start tockens {}'.format(tockens))
+                                if motor_name in tockens[0]:
+                                    new_start_pos.append(float(tockens[1].strip()))
+
+                            for entry in _sim_end_pos:
+                                tockens = entry.split(':')
+                                if motor_name in tockens[0]:
+                                    new_end_pos.append(float(tockens[1].strip()))
+
+                self.output('Calculated positions for VM {} :'.format(motor.getName()))
+                for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
+                    self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
+
+                return motors, new_start_pos, new_end_pos
+            except:
+                raise RuntimeError('Cannot parse VM to components, the cscan cannot be executed')
         else:
             return [motor], [start_pos], [end_pos]
 
