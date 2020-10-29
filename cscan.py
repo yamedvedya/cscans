@@ -57,6 +57,8 @@ class CCScan(CSScan):
 
         # Parsing measurement group:
         self._has_lambda = False
+        self._integration_time_correction = 1
+
         num_counters = 0
         _worker_triggers = []
         _lambda_settled = False
@@ -154,7 +156,7 @@ class CCScan(CSScan):
 
         synchronise = SYNC_MOVE
 
-        duration, cruise_duration, delta_start = travel_time, travel_time, 0
+        original_duration, cruise_duration, delta_start = travel_time, travel_time, 0
         ideal_paths, real_paths = [], []
         for i, (moveable, position) in enumerate(zip(self.moveables, destination_positions)):
             motor = moveable.moveable
@@ -162,7 +164,6 @@ class CCScan(CSScan):
             try:
                 base_vel, top_vel = motor.getBaseRate(), motor.getVelocity()
                 accel_time = motor.getAcceleration()
-                decel_time = motor.getDeceleration()
 
                 # Here we check whether this motor can move with required to synchronise speed
                 # First we set speed to maximum
@@ -200,7 +201,7 @@ class CCScan(CSScan):
             if ideal_path.duration > cruise_duration:
                 if debug:
                     self.macro.output(
-                        'Ideal path duration: {}, requested duration: {}'.format(ideal_path.duration, duration))
+                        'Ideal path duration: {}, requested duration: {}'.format(ideal_path.duration, original_duration))
                 else:
                     self.macro.output(
                         'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
@@ -234,9 +235,11 @@ class CCScan(CSScan):
             new_final_pos = path.final_user_pos + \
                 disp_sign * vmotor.displacement_reach_min_vel
             path.setFinalUserPos(new_final_pos)
-            self.macro.debug('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
+            self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
                                                                                              path.initial_user_pos,
                                                                                              path.final_user_pos))
+
+        self._integration_time_correction = cruise_duration/original_duration
 
         return ideal_paths, delta_start, cruise_duration
 
@@ -264,7 +267,9 @@ class CCScan(CSScan):
         try:
             _, step_info = self.period_steps.next()
             self._data_collector.set_new_step_info(step_info)
-            integ_time = step_info['integ_time']
+            integ_time = step_info['integ_time'] * self._integration_time_correction
+            if self._integration_time_correction > 1:
+                self.macro.output('Integration time was corrected to {} due to slow motor(s)'.format(integ_time))
             self._timer_worker.set_new_period(integ_time)
         except StopIteration:
             self._all_waypoints_finished = True
@@ -714,9 +719,9 @@ class scancl(Hookable):
 
         for mot, start, final in zip(motor, start_pos, final_pos):
             new_mot, new_start, new_final = self._parse_motors(mot, start, final)
-            self.motors.append(new_mot)
-            self.start_pos.append(new_start)
-            self.final_pos.append(new_final)
+            self.motors += new_mot
+            self.start_pos += new_start
+            self.final_pos += new_final
 
         self.nsteps = nb_steps
         self.integ_time = integ_time
@@ -732,6 +737,8 @@ class scancl(Hookable):
         if self.mode == 'dscan':
             self._motion = self.getMotion([m.getName() for m in self.motors])
             self.originalPositions = np.array(self._motion.readPosition(force=True))
+            if debug:
+                self.output('Original positions: {}'.format(self.originalPositions))
             self.start_pos += self.originalPositions
             self.final_pos += self.originalPositions
 
@@ -777,7 +784,7 @@ class scancl(Hookable):
 
     def do_restore(self):
         if self.mode == 'dscan':
-            self.output("Returning to start positions...")
+            self.output("Returning to start positions {}".format(self.originalPositions))
             self._motion.move(self.originalPositions)
 
     def _parse_motors(self, motor, start_pos, end_pos):
@@ -817,8 +824,13 @@ class scancl(Hookable):
 
             return motors, new_start_pos, new_end_pos
         else:
-            return motor, start_pos, end_pos
+            return [motor], [start_pos], [end_pos]
 
+    def _get_command(self, command):
+        for motor, start_pos, final_pos in zip(self.motors, self.start_pos, self.final_pos):
+            command += ' '.join([motor, start_pos, final_pos])
+        command += ' {} {}'.format(self.nsteps, self.integ_time)
+        return command
 # ----------------------------------------------------------------------
 #                       These classes are called by user
 # ----------------------------------------------------------------------
@@ -859,8 +871,7 @@ class dcscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        command = super(dcscan, self).getCommand()
-        return 'dscan ' + ' '.join(command.split()[1:])
+        return self._get_command('dscan ')
 
 class d2cscan(Macro, scancl):
     # this is used to indicate other codes that the macro is a scan
@@ -897,8 +908,7 @@ class d2cscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        command = super(d2cscan, self).getCommand()
-        return 'd2scan ' + ' '.join(command.split()[1:])
+        return self._get_command('d2scan ')
 
 class acscan(Macro, scancl):
 
@@ -937,8 +947,7 @@ class acscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        command = super(acscan, self).getCommand()
-        return 'ascan ' + ' '.join(command.split()[1:])
+        return self._get_command('ascan ')
 
 
 class a2cscan(Macro, scancl):
@@ -976,8 +985,7 @@ class a2cscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        command = super(a2cscan, self).getCommand()
-        return 'a2scan ' + ' '.join(command.split()[1:])
+        return self._get_command('a2scan ')
 
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment
