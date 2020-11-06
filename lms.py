@@ -34,7 +34,7 @@ class lm4(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera LM04')
+        SocketConnection(camera_host, camera_port).send_cmd('set_camera LM04')
 
 # ----------------------------------------------------------------------
 class lm5(Macro):
@@ -44,7 +44,7 @@ class lm5(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera LM05')
+        SocketConnection(camera_host, camera_port).send_cmd('set_camera LM05')
 
 
 # ----------------------------------------------------------------------
@@ -55,7 +55,7 @@ class lm6(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera LM06')
+        SocketConnection(camera_host, camera_port).send_cmd('set_camera LM06')
 
 
 # ----------------------------------------------------------------------
@@ -66,7 +66,7 @@ class lm7(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera LM07')
+        SocketConnection(camera_host, camera_port).send_cmd('set_camera LM07')
 
 
 # ----------------------------------------------------------------------
@@ -77,7 +77,7 @@ class lm8(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera LM08')
+        SocketConnection(camera_host, camera_port).send_cmd('set_camera LM08')
 
 
 # ----------------------------------------------------------------------
@@ -89,12 +89,11 @@ class lms_out(Macro):
 
     def run(self, *args):
         socket = SocketConnection(fsbt_host, fsbt_port)
-        status, list_of_elements = socket.write_read_command('getElementsList')
+        status, list_of_elements = socket.send_cmd('getElementsList')
         if status:
-            self.output
             for name, type in list_of_elements.items():
                 if type == 'screen':
-                    socket.write_command('out {}'.format(name))
+                    socket.send_cmd('out {}'.format(name))
 
 
 # ----------------------------------------------------------------------
@@ -122,21 +121,38 @@ class SocketConnection(object):
             raise RuntimeError("Cannot connect")
 
     # ----------------------------------------------------------------------
-    def write_command(self, command=''):
-
-        command += "\n"
-        self._socket.sendall(str(command).encode())
-
-    # ----------------------------------------------------------------------
-    def write_read_command(self, command=''):
-
-        command += "\n"
-        self._socket.sendall(str(command).encode())
+    def send_cmd(self, command=''):
 
         try:
-            return self._socket.recv(self.DATA_BUFFER_SIZE).decode()
+            self._socket.sendall(str(command).encode())
+
+            start_timeout = time.time()
+            time_out = False
+            got_answer = False
+            ans = ''
+            while not time_out and not got_answer:
+                try:
+                    ans = self._socket.recv(self.DATA_BUFFER_SIZE).decode()
+                    got_answer = True
+                except socket.error as err:
+                    if err.errno != 11:
+                        time_out = True
+                    if time.time() - start_timeout > self.SOCKET_TIMEOUT:
+                        time_out = True
+
+            if not time_out:
+                try:
+                    return json.load(StringIO(ans))
+                except:
+                    return False, []
+
+            else:
+                self.is_connected = False
+                return False, []
+
         except socket.error as err:
-            raise RuntimeError("The socket error {}".format(err))
+            self.is_connected = False
+            return False, []
 
     # ----------------------------------------------------------------------
     def _connect(self):
