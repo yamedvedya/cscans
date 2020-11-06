@@ -29,7 +29,7 @@ from sardana.util.motion import MotionPath
 
 
 verbose = False
-debug = False
+debug = True
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
@@ -782,12 +782,14 @@ class scancl(Hookable):
                              moveables=moveables, env=env, constraints=constrains, extrainfodesc=extrainfodesc)
 
 
+    # ----------------------------------------------------------------------
     def _waypoint_generator(self):
         # returns start and further points points. Note that we pass the desired travel time
         yield {"positions": self.start_pos, "waypoint_id": 0}
         yield {"positions": self.final_pos, "waypoint_id": 1, "integ_time": self.integ_time, "npts": self.nsteps}
 
 
+    # ----------------------------------------------------------------------
     def _period_generator(self):
         step = {}
         step["integ_time"] = self.integ_time
@@ -797,68 +799,78 @@ class scancl(Hookable):
             step["point_id"] = point_no
             yield step
 
+    # ----------------------------------------------------------------------
     def do_restore(self):
         if self.mode == 'dscan':
             self.output("Returning to start positions {}".format(self.originalPositions))
             self._motion.move(self.originalPositions)
 
+    # ----------------------------------------------------------------------
     def _parse_motors(self, motor, start_pos, end_pos):
         try:
             _motor_proxy = PyTango.DeviceProxy(PyTango.DeviceProxy(motor.getName()).TangoDevice)
-            if _motor_proxy.info().dev_class == 'VmExecutor':
-                self.output("VM {} found".format(motor.getName()))
+            if _motor_proxy.info().dev_class in ['SlitExecutor', 'VmExecutor']:
+                try:
+                    if _motor_proxy.info().dev_class == 'SlitExecutor':
+                        self.output("Slit {} found".format(motor.getName()))
+                        tango_motors = []
+                        for component in ['Left', 'Right', 'Top', 'Bottom']:
+                            if _motor_proxy.get_property(component)[component]:
+                                tango_motors.append(_motor_proxy.get_property(component)[component][0])
+                    elif _motor_proxy.info().dev_class == 'VmExecutor':
+                        self.output("VM {} found".format(motor.getName()))
 
-            try:
-                sub_devices = _motor_proxy.get_property('__SubDevices')['__SubDevices']
-                tango_motors = [device.split('/')[2] for device in sub_devices if 'vmexecutor' not in device]
-                channel_names = [device.replace('.', '/') for device in tango_motors]
+                        sub_devices = _motor_proxy.get_property('__SubDevices')['__SubDevices']
+                        tango_motors = [device.replace('hasep23oh:10000/', '') for device in sub_devices if 'vmexecutor' not in device]
 
-                self.output('tango_motors {}'.format(tango_motors))
-                self.output('channel_names {}'.format(channel_names))
+                    channel_names = [device.split('/')[-1].replace('.', '/') for device in tango_motors]
 
-                _motor_proxy.PositionSim = start_pos
-                _sim_start_pos = _motor_proxy.ResultSim
+                    if debug:
+                        self.output('tango_motors {}'.format(tango_motors))
+                        self.output('channel_names {}'.format(channel_names))
 
-                _motor_proxy.PositionSim = end_pos
-                _sim_end_pos = _motor_proxy.ResultSim
+                    _motor_proxy.PositionSim = start_pos
+                    _sim_start_pos = _motor_proxy.ResultSim
 
-                motors = []
-                new_start_pos = []
-                new_end_pos = []
+                    _motor_proxy.PositionSim = end_pos
+                    _sim_end_pos = _motor_proxy.ResultSim
 
-                all_motors = self.getMotors()
-                for motor_name, channel_name in zip(tango_motors, channel_names):
-                    self.output('Looking for {}'.format(channel_name))
-                    for key, value in all_motors.items():
-                        if channel_name in key:
-                            self.output('Found {}'.format(value))
-                            motors.append(value)
-                            for entry in _sim_start_pos:
-                                tockens = entry.split(':')
-                                self.output('Start tockens {}'.format(tockens))
-                                if motor_name in tockens[0]:
-                                    new_start_pos.append(float(tockens[1].strip()))
+                    motors = []
+                    new_start_pos = []
+                    new_end_pos = []
 
-                            for entry in _sim_end_pos:
-                                tockens = entry.split(':')
-                                if motor_name in tockens[0]:
-                                    new_end_pos.append(float(tockens[1].strip()))
+                    all_motors = self.getMotors()
+                    for motor_name, channel_name in zip(tango_motors, channel_names):
+                        for key, value in all_motors.items():
+                            if channel_name in key:
+                                motors.append(value)
+                                for entry in _sim_start_pos:
+                                    tockens = entry.split(':')
+                                    if motor_name in tockens[0]:
+                                        new_start_pos.append(float(tockens[1].strip()))
 
-                self.output('Calculated positions for VM {} :'.format(motor.getName()))
-                for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
-                    self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
+                                for entry in _sim_end_pos:
+                                    tockens = entry.split(':')
+                                    if motor_name in tockens[0]:
+                                        new_end_pos.append(float(tockens[1].strip()))
 
-                return motors, new_start_pos, new_end_pos
-            except:
-                raise RuntimeError('Cannot parse VM to components, the cscan cannot be executed')
+                    self.output('Calculated positions for {} :'.format(motor.getName()))
+                    for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
+                        self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
+
+                        return motors, new_start_pos, new_end_pos
+                except:
+                    raise RuntimeError('Cannot parse {} to components, the cscan cannot be executed'.format(motor.getName()))
             else:
                 return [motor], [start_pos], [end_pos]
         except AttributeError:
             return [motor], [start_pos], [end_pos]
 
+    # ----------------------------------------------------------------------
     def _get_command(self, command):
+        command += '{}scan'.format(len(self.motors))
         for motor, start_pos, final_pos in zip(self.motors, self.start_pos, self.final_pos):
-            command += ' '.join([motor.getName(), str(start_pos), str(final_pos)])
+            command += ' ' + ' '.join([motor.getName(), str(start_pos), str(final_pos)])
         command += ' {} {}'.format(self.nsteps, self.integ_time)
         return command
 # ----------------------------------------------------------------------
@@ -901,7 +913,7 @@ class dcscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        return self._get_command('dscan ')
+        return self._get_command('d')
 
 class d2cscan(Macro, scancl):
     # this is used to indicate other codes that the macro is a scan
@@ -938,7 +950,7 @@ class d2cscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        return self._get_command('d2scan ')
+        return self._get_command('d')
 
 class acscan(Macro, scancl):
 
@@ -977,7 +989,7 @@ class acscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        return self._get_command('ascan ')
+        return self._get_command('a')
 
 
 class a2cscan(Macro, scancl):
@@ -1015,7 +1027,7 @@ class a2cscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        return self._get_command('a2scan ')
+        return self._get_command('a')
 
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment
