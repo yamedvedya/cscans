@@ -10,3 +10,4 @@
 !agilent_libs/waveform_generator.py
 !agilent_libs/__init__.py
 !tocken
+!lms.py
