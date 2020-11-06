@@ -9,6 +9,8 @@ Author yury.matveev@desy.de
 
 import socket
 import errno, time
+import jsom
+import StringIO
 
 from sardana.macroserver.macro import *
 
@@ -32,7 +34,7 @@ class lm4(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera lm04')
+        SocketConnection(camera_host, camera_port).write_command('set_camera LM04')
 
 # ----------------------------------------------------------------------
 class lm5(Macro):
@@ -42,7 +44,7 @@ class lm5(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera lm05')
+        SocketConnection(camera_host, camera_port).write_command('set_camera LM05')
 
 
 # ----------------------------------------------------------------------
@@ -53,7 +55,7 @@ class lm6(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera lm06')
+        SocketConnection(camera_host, camera_port).write_command('set_camera LM06')
 
 
 # ----------------------------------------------------------------------
@@ -64,7 +66,7 @@ class lm7(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera lm07')
+        SocketConnection(camera_host, camera_port).write_command('set_camera LM07')
 
 
 # ----------------------------------------------------------------------
@@ -75,7 +77,7 @@ class lm8(Macro):
     """
 
     def run(self, *args):
-        SocketConnection(camera_host, camera_port).write_command('set_camera lm08')
+        SocketConnection(camera_host, camera_port).write_command('set_camera LM08')
 
 
 # ----------------------------------------------------------------------
@@ -87,8 +89,12 @@ class lms_out(Macro):
 
     def run(self, *args):
         socket = SocketConnection(fsbt_host, fsbt_port)
-        list_of_elements = socket.write_read_command('getElementList')
-
+        status, list_of_elements = socket.write_read_command('getElementsList')
+        if status:
+            self.output
+            for name, type in list_of_elements.items():
+                if type == 'screen':
+                    socket.write_command('out {}'.format(name))
 
 
 # ----------------------------------------------------------------------
@@ -113,33 +119,7 @@ class SocketConnection(object):
 
         self._socket = None
         if not self._connect():
-            raise RuntimeError("Cannot connect to SMU")
-
-    # ----------------------------------------------------------------------
-    def wait_till_complete(self, maximumTime=600):
-        ans = ''
-        timeOut = False
-        startTime = time.time()
-        while True:
-            try:
-                self._socket.sendall('*OPC?\n'.encode())
-                ans = self._socket.recv(self.DATA_BUFFER_SIZE).decode()
-            except socket.error as err:
-                if time.time() - startTime > maximumTime:
-                    timeOut = True
-                    break
-            if "\n" in ans:
-                while True:
-                    try:
-                        self._socket.recv(self.DATA_BUFFER_SIZE).decode()
-                    except socket.error as err:
-                        break
-                break
-
-        if not timeOut:
-            return True
-        else:
-            return False
+            raise RuntimeError("Cannot connect")
 
     # ----------------------------------------------------------------------
     def write_command(self, command=''):
@@ -153,23 +133,10 @@ class SocketConnection(object):
         command += "\n"
         self._socket.sendall(str(command).encode())
 
-        ans = ''
-        timeOut = False
-        while True:
-            try:
-                ans += self._socket.recv(self.DATA_BUFFER_SIZE).decode()
-            except socket.error as err:
-                if err.errno != 11:
-                    timeOut = True
-                    break
-
-            if "\n" in ans:
-                break
-
-        if not timeOut:
-            return ans
-        else:
-            raise RuntimeError("The socket timeout")
+        try:
+            return self._socket.recv(self.DATA_BUFFER_SIZE).decode()
+        except socket.error as err:
+            raise RuntimeError("The socket error {}".format(err))
 
     # ----------------------------------------------------------------------
     def _connect(self):
