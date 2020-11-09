@@ -29,7 +29,7 @@ from sardana.util.motion import MotionPath
 
 
 verbose = False
-debug = True
+debug = False
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
@@ -683,7 +683,7 @@ class TimerWorker(object):
 
         self._counter_proxies = []
         for tango_name, channel in counters:
-            self._counter_proxies.append(PyTango.DeviceProxy('{}.{}'.format(tango_name, channel)))
+            self._counter_proxies.append(PyTango.DeviceProxy('{}.{:02d}'.format(tango_name, channel)))
 
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
@@ -868,7 +868,11 @@ class scancl(Hookable):
 
     # ----------------------------------------------------------------------
     def _get_command(self, command):
-        command += '{}scan'.format(len(self.motors))
+        if len(self.motors) > 1:
+            command += '{}scan'.format(len(self.motors))
+        else:
+            command += 'scan'
+
         for motor, start_pos, final_pos in zip(self.motors, self.start_pos, self.final_pos):
             command += ' ' + ' '.join([motor.getName(), str(start_pos), str(final_pos)])
         command += ' {} {}'.format(self.nsteps, self.integ_time)
