@@ -33,7 +33,6 @@ debug = False
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
-SYNC_MOVE = True
 TIMEOUT = 15
 TIMEOUT_LAMBDA = 1
 REFRESH_PERIOD = 5e-4
@@ -162,10 +161,8 @@ class CCScan(CSScan):
         travel_time = waypoint["integ_time"] * waypoint["npts"]
         destination_positions = waypoint['positions']
 
-        synchronise = SYNC_MOVE
-
         original_duration, cruise_duration, delta_start = travel_time, travel_time, 0
-        ideal_paths, real_paths = [], []
+        calculated_paths = []
         for i, (moveable, position) in enumerate(zip(self.moveables, destination_positions)):
             motor = moveable.moveable
 
@@ -191,65 +188,77 @@ class CCScan(CSScan):
             # Find the cruise duration of motion at top velocity. For this
             # create a virtual motor which has instantaneous acceleration and
             # deceleration
-            ideal_vmotor = VMotor(min_vel=base_vel, max_vel=max_top_vel,
-                                  accel_time=0, decel_time=0)
 
             # create a path which will tell us which is the cruise
             # duration of this motion at top velocity
-            ideal_path = MotionPath(ideal_vmotor, last_user_pos, position)
-            ideal_path.moveable = moveable
-            ideal_path.apply_correction = synchronise
+            motor_path = MotionPath(VMotor(min_vel=base_vel, max_vel=max_top_vel,
+                                  accel_time=0, decel_time=0), last_user_pos, position)
+            motor_path.moveable = moveable
+            motor_path.apply_correction = True
 
             # if really motor is moving in this waypoint
-            if ideal_path.displacement > 0:
+            if motor_path.displacement > 0:
                 # recalculate time to reach maximum velocity
                 delta_start = max(delta_start, accel_time)
 
             # recalculate cruise duration of motion at top velocity
-            if ideal_path.duration > cruise_duration:
+            if motor_path.duration > cruise_duration:
                 if debug:
                     self.macro.output(
-                        'Ideal path duration: {}, requested duration: {}'.format(ideal_path.duration, original_duration))
+                        'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
                 else:
                     self.macro.output(
                         'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
                             moveable.name))
 
-                cruise_duration = ideal_path.duration
+                cruise_duration = motor_path.duration
 
-            ideal_paths.append(ideal_path)
+            calculated_paths.append(motor_path)
 
         # now that we have the appropriate top velocity for all motors, the
         # cruise duration of motion at top velocity, and the time it takes to
         # recalculate
-        for path in ideal_paths:
+        for path in calculated_paths:
             vmotor = path.motor
             # in the case of pseudo motors or not moving a motor...
-            if not path.apply_correction or path.displacement == 0:
-                continue
-            moveable = path.moveable
-            motor = moveable.moveable
-            new_top_vel = path.displacement / cruise_duration
-            vmotor.setMaxVelocity(new_top_vel)
-            accel_t, decel_t = motor.getAcceleration(), motor.getDeceleration()
-            base_vel = vmotor.getMinVelocity()
-            vmotor.setAccelerationTime(accel_t)
-            vmotor.setDecelerationTime(decel_t)
-            disp_sign = path.positive_displacement and 1 or -1
-            new_initial_pos = path.initial_user_pos - accel_t * 0.5 * \
-                disp_sign * (new_top_vel + base_vel) - disp_sign * \
-                new_top_vel * (delta_start - accel_t)
-            path.setInitialUserPos(new_initial_pos)
-            new_final_pos = path.final_user_pos + \
-                disp_sign * vmotor.displacement_reach_min_vel
-            path.setFinalUserPos(new_final_pos)
-            self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
-                                                                                             path.initial_user_pos,
-                                                                                             path.final_user_pos))
+            if path.displacement != 0:
+                moveable = path.moveable
+                motor = moveable.moveable
+
+                old_top_velocity = motor.getVelocity()
+                new_top_vel = path.displacement / cruise_duration
+                vmotor.setMaxVelocity(new_top_vel)
+
+                accel_t, decel_t = motor.getAcceleration(), motor.getDeceleration()
+                vmotor.setAccelerationTime(accel_t)
+                vmotor.setDecelerationTime(decel_t)
+
+                self.macro.output('Sync: {}'.format(self.macro.sync))
+                if self.macro.sync:
+                    disp_sign = path.positive_displacement and 1 or -1
+                    base_vel = vmotor.getMinVelocity()
+                    new_initial_pos = path.initial_user_pos - accel_t * 0.5 * \
+                        disp_sign * (new_top_vel + base_vel) - disp_sign * \
+                        new_top_vel * (delta_start - accel_t)
+                    path.setInitialUserPos(new_initial_pos)
+
+                    new_final_pos = path.final_user_pos + \
+                        disp_sign * vmotor.displacement_reach_min_vel
+                    path.setFinalUserPos(new_final_pos)
+                else:
+                    delta_start = 0
+
+                self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
+                                                                                                 path.initial_user_pos,
+                                                                                                 path.final_user_pos))
+
+                self.macro.output('The speed of {} motor will be changed from {} to {}'.format(motor,
+                                                                                                 old_top_velocity,
+                                                                                                 new_top_vel))
 
         self._integration_time_correction = cruise_duration/original_duration
 
-        return ideal_paths, delta_start, cruise_duration
+        return calculated_paths, delta_start, cruise_duration
 
     # ----------------------------------------------------------------------
     def scan_loop(self):
@@ -302,7 +311,7 @@ class CCScan(CSScan):
             if debug:
                 self.macro.output("wait for motor to reach max velocity")
             # wait for motor to reach max velocity
-            deltat = self.timestamp_to_start - time.time()- integ_time
+            deltat = self.timestamp_to_start - time.time() - integ_time
             if debug:
                 self.macro.output('Delta T: {}'.format(deltat))
             if deltat > 0:
@@ -741,6 +750,22 @@ class scancl(Hookable):
         self.nsteps = nb_steps
         self.integ_time = integ_time
 
+        try:
+            self.sync = self.getEnv('cscan_sync')
+        except Exception as err:
+            self.sync = True
+
+        if debug:
+            self.output('SYNC mode {}'.format(self.sync))
+
+        if not self.sync and len(self.motors) > 1:
+            options = "Yes", "No"
+            run_or_not = self.input("The sync mode is off, the positions of motors will not be syncronized. Continue?".format(self.integ_time),
+                                    data_type=options, allow_multiple=False, title="Favorites", default_value='No')
+            if run_or_not == 'No':
+                self.do_scan = False
+                return
+
         if self.integ_time < 0.1:
             options = "Yes", "No"
             run_or_not = self.input("The {} integration time is too short for continuous scans. Recommended > 0.1 sec. Continue?".format(self.integ_time),
@@ -1044,6 +1069,7 @@ class cscan_senv(Macro):
         self.setEnv("LambdaDevice", "hasep23oh:10000/p23/lambda/01")
         self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
         self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuator")
+        self.setEnv("cscan_sync", True)
 
 # ----------------------------------------------------------------------
 #                       Auxiliary classes
