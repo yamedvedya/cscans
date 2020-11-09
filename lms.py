@@ -2,25 +2,28 @@
 '''
 File name lms.py
 
-The purpose of these script is remotly control lm cameras.
+The purpose of these script is remotely control lm cameras.
 
 Author yury.matveev@desy.de
 '''
 
 import socket
 import errno, time
-import jsom
-import StringIO
+import json
+from io import StringIO
 
 from sardana.macroserver.macro import *
 
-camera_host = 'hase027m'
+camera_host = 'hasep23web'
 camera_port = 23358
 
-fsbt_host = 'hasep23dev'
+fsbt_host = 'hasep23swt01'
 fsbt_port = 12658
 
-__all__ = ['lm4', 'lm5', 'lm6', 'lm7', 'lm8', "lms_out"]
+__all__ = ['lm4', 'lm5', 'lm6', 'lm7', 'lm8',
+           'lm5_out', 'lm6_out', 'lm7_out', 'lm8_out',
+           'lm5_in', 'lm6_in', 'lm7_in', 'lm8_in',
+           "lms_out"]
 
 
 # ----------------------------------------------------------------------
@@ -39,7 +42,7 @@ class lm4(Macro):
 # ----------------------------------------------------------------------
 class lm5(Macro):
 
-    """ Switches the camera viewer to LM4
+    """ Switches the camera viewer to LM5
 
     """
 
@@ -50,7 +53,7 @@ class lm5(Macro):
 # ----------------------------------------------------------------------
 class lm6(Macro):
 
-    """ Switches the camera viewer to LM4
+    """ Switches the camera viewer to LM6
 
     """
 
@@ -61,7 +64,7 @@ class lm6(Macro):
 # ----------------------------------------------------------------------
 class lm7(Macro):
 
-    """ Switches the camera viewer to LM4
+    """ Switches the camera viewer to LM7
 
     """
 
@@ -72,7 +75,7 @@ class lm7(Macro):
 # ----------------------------------------------------------------------
 class lm8(Macro):
 
-    """ Switches the camera viewer to LM4
+    """ Switches the camera viewer to LM8
 
     """
 
@@ -81,9 +84,94 @@ class lm8(Macro):
 
 
 # ----------------------------------------------------------------------
+class lm5_out(Macro):
+
+    """ Move LM6 out
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('out LM5')
+
+
+# ----------------------------------------------------------------------
+class lm5_in(Macro):
+
+    """ Put LM5 in
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('in LM5')
+
+
+# ----------------------------------------------------------------------
+class lm6_out(Macro):
+
+    """ Move LM6 out
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('out LM6')
+
+
+# ----------------------------------------------------------------------
+class lm6_in(Macro):
+
+    """ Put LM6 in
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('in LM6')
+
+# ----------------------------------------------------------------------
+class lm7_out(Macro):
+
+    """ Move LM7 out
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('out LM7')
+
+# ----------------------------------------------------------------------
+class lm7_in(Macro):
+
+    """ Put LM7 in
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('in LM7')
+
+# ----------------------------------------------------------------------
+class lm8_out(Macro):
+
+    """ Move LM8 out
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('out LM8')
+
+
+
+# ----------------------------------------------------------------------
+class lm8_in(Macro):
+
+    """ Put LM8 in
+
+    """
+
+    def run(self, *args):
+        SocketConnection(fsbt_host, fsbt_port).send_cmd('in LM8')
+
+# ----------------------------------------------------------------------
 class lms_out(Macro):
 
-    """ Switches the camera viewer to LM4
+    """ Move all LMs out
 
     """
 
