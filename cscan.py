@@ -90,15 +90,15 @@ class CCScan(CSScan):
         _data_collector_trigger = Queue()
         self._data_collector = DataCollectorWorker(self.macro, self._data_workers,
                                                    _data_collector_trigger, self._error_queue, self._extra_columns,
-                                                   self.motion, self.moveables, self.data)
+                                                   self.moveables, self.data)
 
         ind = 0
 
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
             if 'eh_t' in channel_info.label:
                 self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue, _counters,
-                                                 _worker_triggers + [_data_collector_trigger], _workers_done_barrier,
-                                                 self.macro)
+                                                 _worker_triggers, _data_collector_trigger, _workers_done_barrier,
+                                                 self.macro, self.motion)
             if 'lmbd' in channel_info.label:
                 if 'lmbd_countsroi' in channel_info.label:
                     self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
@@ -429,7 +429,7 @@ class CCScan(CSScan):
 class DataCollectorWorker(object):
 
     def __init__(self, macro, data_workers, point_trigger, error_queue,
-                 extra_columns, motion, moveables, data):
+                 extra_columns, moveables, data):
 
         self._data_collector_status = 'idle'
         self._last_started_point = -1
@@ -438,7 +438,6 @@ class DataCollectorWorker(object):
         self._point_trigger = point_trigger
 
         self._extra_columns = extra_columns
-        self._motion = motion
         self._moveables = moveables
         self._data = data
         self._step_info = None
@@ -456,7 +455,7 @@ class DataCollectorWorker(object):
         self._data_collector_status = 'running'
         while not self._worker.stopped():
             try:
-                _last_started_point = self._point_trigger.get(block=False)
+                _last_started_point, _end_time, _motor_position = self._point_trigger.get(block=False)
                 self.status = 'collecting'
                 if _last_started_point > self.last_collected_point:
                     if debug:
@@ -483,10 +482,9 @@ class DataCollectorWorker(object):
 
                         # Add final moveable positions
                         data_line['point_nb'] = _last_started_point
-                        data_line['timestamp'] = time.time() - self.acq_start_time
-                        positions = self._motion.readPosition(force=True)
+                        data_line['timestamp'] = _end_time - self.acq_start_time
                         for i, m in enumerate(self._moveables):
-                            data_line[m.moveable.getName()] = positions[i]
+                            data_line[m.moveable.getName()] = _motor_position[i]
 
                         # Add extra data coming in the step['extrainfo'] dictionary
                         if 'extrainfo' in self._step_info:
@@ -515,10 +513,10 @@ class DataCollectorWorker(object):
     def stop(self):
         self._worker.stop()
 
-
 # ----------------------------------------------------------------------
 #                       Channel data reader class
 # ----------------------------------------------------------------------
+
 
 class DataSourceWorker(object):
     def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro):
@@ -567,10 +565,10 @@ class DataSourceWorker(object):
     def stop(self):
         self._worker.stop()
 
-
 # ----------------------------------------------------------------------
 #                       Lambda ROI reader class
 # ----------------------------------------------------------------------
+
 
 class LambdaRoiWorker(object):
     def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro):
@@ -633,10 +631,10 @@ class LambdaRoiWorker(object):
     def stop(self):
         self._worker.stop()
 
-
 # ----------------------------------------------------------------------
 #                       Lambda data class
 # ----------------------------------------------------------------------
+
 
 class LambdaWorker(object):
     def __init__(self, source_info, trigger, workers_done_barrier, error_queue, macro):
@@ -673,8 +671,10 @@ class LambdaWorker(object):
 #                       Timer class
 # ----------------------------------------------------------------------
 
+
 class TimerWorker(object):
-    def __init__(self, timer_name, error_queue, counters, triggers, workers_done_barrier, macro):
+    def __init__(self, timer_name, error_queue, counters, triggers, data_collector_trigger,
+                 workers_done_barrier, macro, motion):
         #parameters:
         # timer_name: tango name of timer
         # error_queue: queue to report about problems
@@ -688,6 +688,8 @@ class TimerWorker(object):
         self._triggers = triggers
         self._workers_done_barrier = workers_done_barrier
         self._macro = macro
+        self._motion = motion
+        self._data_collector_trigger = data_collector_trigger
         self._timeit = []
 
         self._counter_proxies = []
@@ -709,6 +711,7 @@ class TimerWorker(object):
             self._timeit.append(time.time() - _start_time)
             for trigger in self._triggers:
                 trigger.put(self._point)
+            self._data_collector_trigger.put([self._point, time.time(), self._motion.readPosition(force=True)])
             self._workers_done_barrier.wait()
             self._point += 1
 
