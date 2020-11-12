@@ -28,14 +28,18 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 
-verbose = False
 debug = False
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
-TIMEOUT = 15
+TIMEOUT = 1
 TIMEOUT_LAMBDA = 1
 REFRESH_PERIOD = 5e-4
+
+# Super ugly, should be better solution:
+counter_names = {'sis3820': 'p23/counter/eh'}
+timer_names = {'eh_t01': 'p23/dgg2/eh.01',
+               'eh_t02': 'p23/dgg2/eh.02'}
 
 __all__ = ['dcscan', 'acscan', 'd2cscan', 'a2cscan','cscan_senv']
 
@@ -50,12 +54,8 @@ class CCScan(CSScan):
         super(CCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc)
 
-        # Super ugly, should be better solution:
-        timer_names = {'eh_t01': 'p23/dgg2/eh.01',
-                       'eh_t02': 'p23/dgg2/eh.02'}
-
-        counter_names = {'sis3820': 'p23/counter/eh'}
-
+        # self.macro.output(dir(self.motion))
+        # raise RuntimeError('Test run')
         # Parsing measurement group:
         self._has_lambda = False
         self._integration_time_correction = 1
@@ -76,7 +76,7 @@ class CCScan(CSScan):
 
             for counter_name, tango_name in counter_names.items():
                 if counter_name in channel_info.full_name:
-                    _counters.append([tango_name, int(channel_info.full_name.split('/')[-1])])
+                         PyTango.DeviceProxy('{}.{:02d}'.format(tango_name, int(channel_info.full_name.split('/')[-1]))).Reset()
 
         # DataWorkers array
         self._data_workers = []
@@ -96,7 +96,7 @@ class CCScan(CSScan):
 
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
             if 'eh_t' in channel_info.label:
-                self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue, _counters,
+                self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue,
                                                  _worker_triggers, _data_collector_trigger, _workers_done_barrier,
                                                  self.macro, self.motion)
             if 'lmbd' in channel_info.label:
@@ -121,6 +121,17 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def _setup_lambda(self, integ_time):
         _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
+        if _lambda_proxy.State() != PyTango.DevState.ON:
+            _lambda_proxy.StopAcq()
+            _time_out = time.time()
+            while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
+                time.sleep(0.1)
+                macro.checkPoint()
+
+            if _lambda_proxy.State() != PyTango.DevState.ON:
+                self.macro.output(_lambda_proxy.State())
+                raise RuntimeError('Cannot stop LAMBDA')
+
         _lambda_proxy.TriggerMode = 2
         _lambda_proxy.ShutterTime = integ_time*1000
         _lambda_proxy.FrameNumbers = max(self.macro.nsteps, 1000)
@@ -230,10 +241,9 @@ class CCScan(CSScan):
                 vmotor.setMaxVelocity(new_top_vel)
 
                 accel_t, decel_t = motor.getAcceleration(), motor.getDeceleration()
-                vmotor.setAccelerationTime(accel_t)
-                vmotor.setDecelerationTime(decel_t)
+                vmotor.setAccelerationTime(accel_t*new_top_vel/old_top_velocity)  # to keep acceleration in steps
+                vmotor.setDecelerationTime(decel_t*new_top_vel/old_top_velocity)  # to keep acceleration in steps
 
-                self.macro.output('Sync: {}'.format(self.macro.sync))
                 if self.macro.sync:
                     disp_sign = path.positive_displacement and 1 or -1
                     base_vel = vmotor.getMinVelocity()
@@ -332,20 +342,20 @@ class CCScan(CSScan):
                 except empty_queue:
                     pass
                 else:
-                    if verbose:
-                        self.macro.output('Got an exception {}'.format(err))
+                    if debug:
+                        self.macro.output('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
                     self._timer_worker.stop()
                     self._data_collector.stop()
                     for worker in self._data_workers:
                         worker.stop()
-                    raise RuntimeError(err)
+                    break
 
                 # If there is no more time to acquire... stop!
                 elapsed_time = time.time() - acq_start_time
-                if elapsed_time > self.acq_duration + 2 * integ_time:
+                if elapsed_time > self.acq_duration + 3 * integ_time:
                     if debug:
                         self.macro.output("Stopping all workers")
-                    motion_event.clear()
+                    # motion_event.clear()
                     self._timer_worker.stop()
                     break
 
@@ -355,10 +365,14 @@ class CCScan(CSScan):
 
             if debug:
                 self.macro.output("waiting for data collector finishes")
+
             _timeout_start_time = time.time()
             while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status == 'collecting':
                 time.sleep(integ_time)
-            else:
+
+            if self._data_collector.status == 'collecting':
+                if debug:
+                    self.macro.output('Killing DataCollector')
                 self._data_collector.stop()
 
             for worker in self._data_workers:
@@ -385,6 +399,7 @@ class CCScan(CSScan):
 
     # ----------------------------------------------------------------------
     def do_restore(self):
+        self.motion.stop()
         self._restore_motors()
 
         if self._has_lambda:
@@ -456,6 +471,11 @@ class DataCollectorWorker(object):
         while not self._worker.stopped():
             try:
                 _last_started_point, _end_time, _motor_position = self._point_trigger.get(block=False)
+            except empty_queue:
+                self.status = 'waiting'
+                time.sleep(0.1)
+            else:
+                _not_reported = ''
                 self.status = 'collecting'
                 if _last_started_point > self.last_collected_point:
                     if debug:
@@ -465,11 +485,11 @@ class DataCollectorWorker(object):
                     while not all_detector_reported and not self._worker.stopped():
                         all_detector_reported = True
                         for worker in self._data_workers:
-                            data = worker.data_buffer.get(''.format(_last_started_point))
-                            if data is None:
-                                all_detector_reported *= False
+                            if worker.data_buffer.has_key('{:04d}'.format(_last_started_point)):
+                                data_line[worker.channel_name] = worker.data_buffer['{:04d}'.format(_last_started_point)]
                             else:
-                                data_line[worker.channel_name] = data
+                                all_detector_reported *= False
+                                _not_reported = worker.channel_name
 
                     if not self._worker.stopped():
                         if debug:
@@ -494,11 +514,8 @@ class DataCollectorWorker(object):
                     else:
                         self.status = 'aborted'
                         if debug:
+                            self._macro.output('Not reported: {}'.format(_not_reported))
                             self._macro.output("datacollected was stopped")
-
-            except empty_queue:
-                self.status = 'waiting'
-                time.sleep(0.1)
 
         self.status = 'finished'
         if debug:
@@ -540,6 +557,9 @@ class DataSourceWorker(object):
         self._device_attribute = tokens[-1]
         self.channel_name = source_info.full_name
 
+        self._is_counter = 'sis3820' in source_info.full_name
+        self._old_value = getattr(self._device_proxy, self._device_attribute)
+
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
 
@@ -549,14 +569,21 @@ class DataSourceWorker(object):
             try:
                 index = self._trigger.get(block=False)
                 _start_time = time.time()
-                self.data_buffer[''.format(index)] = getattr(self._device_proxy, self._device_attribute)
+                if self._is_counter:
+                    value = getattr(self._device_proxy, self._device_attribute)
+                    self.data_buffer['{:04d}'.format(index)] = value - self._old_value
+                    self._old_value = value
+                else:
+                    self.data_buffer['{:04d}'.format(index)] = getattr(self._device_proxy, self._device_attribute)
                 if debug:
                     self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
-                        self.channel_name, index, self.data_buffer[''.format(index)]))
+                        self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
                 self._workers_done_barrier.report()
                 _timeit.append(time.time()-_start_time)
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
+            except Exception as err:
+                self._macro.output('Error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
 
         if time_me:
             self._macro.output('Mean time to get data for worker {} is {}'.format(self.channel_name,
@@ -607,15 +634,15 @@ class LambdaRoiWorker(object):
             try:
                 index = self._trigger.get(block=False)
                 _start_time = time.time()
-                while not self._worker.stopped():
+                while time.time() - _start_time < TIMEOUT:
                     if self._device_proxy.lastanalyzedframe >= index + 1:
                         data = self._device_proxy.getroiforframe([self._channel, index + 1])
                         if self._correction_needed:
                             data *= self._attenuator_proxy.Position
-                        self.data_buffer[''.format(index)] = data
+                        self.data_buffer['{:04d}'.format(index)] = data
                         if debug:
-                            self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
-                                self.channel_name, index, self.data_buffer[''.format(index)]))
+                            self._macro.output('Lambda RoI {} was triggered, point {} with data {} in buffer'.format(
+                                                self._channel, index, self.data_buffer['{:04d}'.format(index)]))
                         self._workers_done_barrier.report()
                         _timeit.append(time.time()-_start_time)
                         break
@@ -660,7 +687,7 @@ class LambdaWorker(object):
         while not self._worker.stopped():
             try:
                 index = self._trigger.get(block=False)
-                self.data_buffer[''.format(index)] = -1
+                self.data_buffer['{:04d}'.format(index)] = -1
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
 
@@ -673,7 +700,7 @@ class LambdaWorker(object):
 
 
 class TimerWorker(object):
-    def __init__(self, timer_name, error_queue, counters, triggers, data_collector_trigger,
+    def __init__(self, timer_name, error_queue, triggers, data_collector_trigger,
                  workers_done_barrier, macro, motion):
         #parameters:
         # timer_name: tango name of timer
@@ -692,10 +719,6 @@ class TimerWorker(object):
         self._data_collector_trigger = data_collector_trigger
         self._timeit = []
 
-        self._counter_proxies = []
-        for tango_name, channel in counters:
-            self._counter_proxies.append(PyTango.DeviceProxy('{}.{:02d}'.format(tango_name, channel)))
-
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
     def _main_loop(self):
@@ -704,14 +727,11 @@ class TimerWorker(object):
             if debug:
                 self._macro.output('Start timer point {}'.format(self._point))
             _start_time = time.time()
-            for proxy in self._counter_proxies:
-                proxy.Reset()
-
             self._device_proxy.StartAndWaitForTimer()
             self._timeit.append(time.time() - _start_time)
+            self._data_collector_trigger.put([self._point, time.time(), self._motion.readPosition(force=True)])
             for trigger in self._triggers:
                 trigger.put(self._point)
-            self._data_collector_trigger.put([self._point, time.time(), self._motion.readPosition(force=True)])
             self._workers_done_barrier.wait()
             self._point += 1
 
@@ -902,7 +922,7 @@ class scancl(Hookable):
             command += 'scan'
 
         for motor, start_pos, final_pos in zip(self.motors, self.start_pos, self.final_pos):
-            command += ' ' + ' '.join([motor.getName(), str(start_pos), str(final_pos)])
+            command += ' ' + ' '.join([motor.getName(), '{:.4f} {:.4f}'.format(float(start_pos), float(final_pos))])
         command += ' {} {}'.format(self.nsteps, self.integ_time)
         return command
 # ----------------------------------------------------------------------
@@ -1102,6 +1122,7 @@ class ExcThread(threading.Thread):
         threading.Thread.__init__(self, target=target, name=threadname, args=args)
         self._stop_event = threading.Event()
         self.bucket = errorBucket
+        self._name = threadname
 
     # ----------------------------------------------------------------------
     def run(self):
@@ -1111,8 +1132,8 @@ class ExcThread(threading.Thread):
             else:
                 self.ret = self._target(*self._args, **self._kwargs)
         except Exception as exp:
-            traceback.print_tb(sys.exc_info()[2])
-            self.bucket.put(sys.exc_info())
+            # traceback.print_tb(sys.exc_info()[2])
+            self.bucket.put([self._name, sys.exc_info()[0], sys.exc_info()[2]])
 
     # ----------------------------------------------------------------------
     def stop(self):
