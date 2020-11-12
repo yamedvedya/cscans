@@ -729,10 +729,10 @@ class TimerWorker(object):
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
             self._timeit.append(time.time() - _start_time)
-            self._data_collector_trigger.put([self._point, time.time(), self._motion.readPosition(force=True)])
             for trigger in self._triggers:
                 trigger.put(self._point)
             self._workers_done_barrier.wait()
+            self._data_collector_trigger.put([self._point, time.time(), self._motion.readPosition(force=True)])
             self._point += 1
 
     def time_me(self):
