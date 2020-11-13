@@ -36,6 +36,8 @@ TIMEOUT = 1
 TIMEOUT_LAMBDA = 1
 REFRESH_PERIOD = 5e-4
 
+DUMMY_MOTOR = 'exp_dmy01'
+
 # Super ugly, should be better solution:
 counter_names = {'sis3820': 'p23/counter/eh'}
 timer_names = {'eh_t01': 'p23/dgg2/eh.01',
@@ -57,6 +59,7 @@ class CCScan(CSScan):
         # self.macro.output(dir(self.motion))
         # raise RuntimeError('Test run')
         # Parsing measurement group:
+
         self._has_lambda = False
         self._integration_time_correction = 1
 
@@ -174,27 +177,31 @@ class CCScan(CSScan):
 
         original_duration, cruise_duration, delta_start = travel_time, travel_time, 0
         calculated_paths = []
-        for i, (moveable, position) in enumerate(zip(self.moveables, destination_positions)):
+
+        _can_be_synchro = True
+        for i, (moveable, start_position, final_position) in enumerate(zip(self.moveables, start_positions, destination_positions)):
             motor = moveable.moveable
 
             try:
-                base_vel, top_vel = motor.getBaseRate(), motor.getVelocity()
-                accel_time = motor.getAcceleration()
-
-                # Here we check whether this motor can move with required to synchronise speed
-                # First we set speed to maximum
-                max_top_vel = self.get_max_top_velocity(motor)
-                if not iterate_only:
-                    motor.setVelocity(max_top_vel)
-
+                base_vel = motor.getBaseRate()
             except AttributeError:
-                if not iterate_only:
-                    self.macro.warning("%s motion will not be coordinated", motor)
-                base_vel, top_vel, max_top_vel = 0, float('+inf'), float('+inf')
-                accel_time, decel_time = 0, 0
-                synchronise = False
+                base_vel = 0
+                _can_be_synchro = False
 
-            last_user_pos = start_positions[i]
+            try:
+                motor_vel = motor.getVelocity()
+            except AttributeError:
+                raise RuntimeError("{} don't have velocity parameter, cscans is impossible".format(motor))
+
+            try:
+                accel_time = motor.getAcceleration()
+            except AttributeError:
+                accel_time = 0
+                _can_be_synchro = False
+
+            if not iterate_only and not _can_be_synchro:
+                self.macro.warning("{} motion will not be coordinated".format(motor))
+                self.macro.sync = False
 
             # Find the cruise duration of motion at top velocity. For this
             # create a virtual motor which has instantaneous acceleration and
@@ -202,8 +209,8 @@ class CCScan(CSScan):
 
             # create a path which will tell us which is the cruise
             # duration of this motion at top velocity
-            motor_path = MotionPath(VMotor(min_vel=base_vel, max_vel=max_top_vel,
-                                  accel_time=0, decel_time=0), last_user_pos, position)
+            motor_path = MotionPath(VMotor(min_vel=base_vel, max_vel=motor_vel,
+                                  accel_time=0, decel_time=0), start_position, final_position)
             motor_path.moveable = moveable
             motor_path.apply_correction = True
 
@@ -229,6 +236,7 @@ class CCScan(CSScan):
         # now that we have the appropriate top velocity for all motors, the
         # cruise duration of motion at top velocity, and the time it takes to
         # recalculate
+        _reset_positions = False
         for path in calculated_paths:
             vmotor = path.motor
             # in the case of pseudo motors or not moving a motor...
@@ -240,9 +248,13 @@ class CCScan(CSScan):
                 new_top_vel = path.displacement / cruise_duration
                 vmotor.setMaxVelocity(new_top_vel)
 
-                accel_t, decel_t = motor.getAcceleration(), motor.getDeceleration()
-                vmotor.setAccelerationTime(accel_t*new_top_vel/old_top_velocity)  # to keep acceleration in steps
-                vmotor.setDecelerationTime(decel_t*new_top_vel/old_top_velocity)  # to keep acceleration in steps
+                try:
+                    accel_t, decel_t = motor.getAcceleration(), motor.getDeceleration()
+                    vmotor.setAccelerationTime(accel_t * new_top_vel / old_top_velocity) # to keep acceleration in steps
+                    vmotor.setDecelerationTime(decel_t * new_top_vel / old_top_velocity) # to keep acceleration in steps
+                except AttributeError:
+                    self.macro.warning("{} motion don't have acceleration/deceleration time".format(motor))
+                    self.macro.sync = False
 
                 if self.macro.sync:
                     disp_sign = path.positive_displacement and 1 or -1
@@ -250,26 +262,51 @@ class CCScan(CSScan):
                     new_initial_pos = path.initial_user_pos - accel_t * 0.5 * \
                         disp_sign * (new_top_vel + base_vel) - disp_sign * \
                         new_top_vel * (delta_start - accel_t)
-                    path.setInitialUserPos(new_initial_pos)
+                    if self._check_motor_limits(motor, new_initial_pos):
+                        path.setInitialUserPos(new_initial_pos)
+                    else:
+                        _reset_positions = True
 
                     new_final_pos = path.final_user_pos + \
                         disp_sign * vmotor.displacement_reach_min_vel
-                    path.setFinalUserPos(new_final_pos)
+                    if self._check_motor_limits(motor, new_final_pos):
+                        path.setFinalUserPos(new_final_pos)
+                    else:
+                        _reset_positions = True
                 else:
                     delta_start = 0
 
-                self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
-                                                                                                 path.initial_user_pos,
-                                                                                                 path.final_user_pos))
+        if _reset_positions:
+            for path, original_start, original_stop in zip(calculated_paths, start_positions, destination_positions):
+                path.setInitialUserPos(original_start)
+                path.setFinalUserPos(original_stop)
 
-                self.macro.output('The speed of {} motor will be changed from {} to {}'.format(motor,
-                                                                                                 old_top_velocity,
-                                                                                                 new_top_vel))
+        for path in calculated_paths:
+            self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
+                                                                                              path.initial_user_pos,
+                                                                                              path.final_user_pos))
+
+            self.macro.output('The speed of {} motor will be changed from {} to {}'.format(motor,
+                                                                                           old_top_velocity,
+                                                                                           new_top_vel))
 
         self._integration_time_correction = cruise_duration/original_duration
 
         return calculated_paths, delta_start, cruise_duration
 
+    # ----------------------------------------------------------------------
+    def _check_motor_limits(self, motor, destination):
+        if self.get_min_pos(motor) <= destination <= self.get_max_pos(motor):
+            return True
+        else:
+            options = "Yes", "No"
+            run_or_not = self.macro.input(
+                "The calculated overhead position {} to sync movement of {} is out of the limits. The scan can be executed only in non-sync mode.Continue?".format(destination, motor),
+                data_type=options, allow_multiple=False, title="Favorites", default_value='Yes')
+            if run_or_not == 'No':
+                raise RuntimeError('Abort scan')
+
+            return False
     # ----------------------------------------------------------------------
     def scan_loop(self):
 
@@ -925,6 +962,7 @@ class scancl(Hookable):
             command += ' ' + ' '.join([motor.getName(), '{:.4f} {:.4f}'.format(float(start_pos), float(final_pos))])
         command += ' {} {}'.format(self.nsteps, self.integ_time)
         return command
+
 # ----------------------------------------------------------------------
 #                       These classes are called by user
 # ----------------------------------------------------------------------
@@ -965,8 +1003,9 @@ class dcscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        return self._get_command('d')
+        return self._get_command('a')
 
+# ----------------------------------------------------------------------
 class d2cscan(Macro, scancl):
     # this is used to indicate other codes that the macro is a scan
     hints = {'scan': 'd2cscan', 'allowsHooks': ('pre-scan', 'pre-move',
@@ -1002,8 +1041,9 @@ class d2cscan(Macro, scancl):
                 yield step
 
     def getCommand(self):
-        return self._get_command('d')
+        return self._get_command('a')
 
+# ----------------------------------------------------------------------
 class acscan(Macro, scancl):
 
     """ Performs a continuous scan taking current Active Measurement Group
@@ -1043,7 +1083,7 @@ class acscan(Macro, scancl):
     def getCommand(self):
         return self._get_command('a')
 
-
+# ----------------------------------------------------------------------
 class a2cscan(Macro, scancl):
     # this is used to indicate other codes that the macro is a scan
     hints = {'scan': 'a2scan', 'allowsHooks': ('pre-scan', 'pre-move',
@@ -1080,6 +1120,42 @@ class a2cscan(Macro, scancl):
 
     def getCommand(self):
         return self._get_command('a')
+
+# ----------------------------------------------------------------------
+class ctscan(Macro, scancl):
+    # this is used to indicate other codes that the macro is a scan
+    hints = {'scan': 'ctscan', 'allowsHooks': ('pre-scan', 'pre-move',
+                                                'post-move', 'pre-acq',
+                                                'post-acq',
+                                                'post-scan')}
+
+    env = ['ActiveMntGrp']
+
+    param_def = [
+        ['total_time',      Type.Float,     None, 'Total scan time'],
+        ['integ_time',      Type.Float,     None, 'Integration time']
+    ]
+
+    def prepare(self, total_time, integ_time, **opts):
+
+        self.name = 'ctscan'
+
+        motor = self.getMotor(DUMMY_MOTOR)
+        motor.Acceleration = 0
+        motor.Deceleration = 0
+
+        self._steps = int(total_time/integ_time)
+
+        self._prepare('ascan', [motor], np.array([0], dtype='d'),
+                      np.array([total_time], dtype='d'), int(total_time/integ_time) + 1, integ_time, **opts)
+
+    def run(self, *args):
+        if self.do_scan:
+            for step in self._gScan.step_scan():
+                yield step
+
+    def getCommand(self):
+        return 'ascan {} 0 {} {} {}'.format(DUMMY_MOTOR, self.final_pos[0], self.nsteps, self.integ_time)
 
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment
