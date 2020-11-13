@@ -38,6 +38,11 @@ REFRESH_PERIOD = 5e-4
 
 DUMMY_MOTOR = 'exp_dmy01'
 
+YES_OPTIONS = ['Yes', 'yes', 'y']
+NO_OPTIONS = ['No', 'no', 'n']
+
+COUNTER_RESET_DELAY = 0
+
 # Super ugly, should be better solution:
 counter_names = {'sis3820': 'p23/counter/eh'}
 timer_names = {'eh_t01': 'p23/dgg2/eh.01',
@@ -76,10 +81,6 @@ class CCScan(CSScan):
                 if not _lambda_settled:
                     self._has_lambda = True
                     self._original_trigger_mode, self._original_operating_mode = None, None
-
-            for counter_name, tango_name in counter_names.items():
-                if counter_name in channel_info.full_name:
-                         PyTango.DeviceProxy('{}.{:02d}'.format(tango_name, int(channel_info.full_name.split('/')[-1]))).Reset()
 
         # DataWorkers array
         self._data_workers = []
@@ -165,7 +166,7 @@ class CCScan(CSScan):
             self.macro.output('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
 
      # ----------------------------------------------------------------------
-    def prepare_waypoint(self, waypoint, start_positions, iterate_only=False):
+    def prepare_waypoint(self, waypoint, iterate_only=False):
         ### This function basically repeats the original, The only difference is that "slow_down" factor changed
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
@@ -173,13 +174,13 @@ class CCScan(CSScan):
         self.debug("prepare_waypoint() entering...")
 
         travel_time = waypoint["integ_time"] * waypoint["npts"]
-        destination_positions = waypoint['positions']
 
         original_duration, cruise_duration, delta_start = travel_time, travel_time, 0
         calculated_paths = []
 
         _can_be_synchro = True
-        for i, (moveable, start_position, final_position) in enumerate(zip(self.moveables, start_positions, destination_positions)):
+        for i, (moveable, start_position, final_position) in enumerate(zip(self.moveables, waypoint['start_positions'],
+                                                                           waypoint['positions'])):
             motor = moveable.moveable
 
             try:
@@ -212,7 +213,6 @@ class CCScan(CSScan):
             motor_path = MotionPath(VMotor(min_vel=base_vel, max_vel=motor_vel,
                                   accel_time=0, decel_time=0), start_position, final_position)
             motor_path.moveable = moveable
-            motor_path.apply_correction = True
 
             # if really motor is moving in this waypoint
             if motor_path.displacement > 0:
@@ -277,7 +277,8 @@ class CCScan(CSScan):
                     delta_start = 0
 
         if _reset_positions:
-            for path, original_start, original_stop in zip(calculated_paths, start_positions, destination_positions):
+            for path, original_start, original_stop in zip(calculated_paths, waypoint['start_positions'],
+                                                           waypoint['positions']):
                 path.setInitialUserPos(original_start)
                 path.setFinalUserPos(original_stop)
 
@@ -299,14 +300,74 @@ class CCScan(CSScan):
         if self.get_min_pos(motor) <= destination <= self.get_max_pos(motor):
             return True
         else:
-            options = "Yes", "No"
+            options = YES_OPTIONS + NO_OPTIONS
             run_or_not = self.macro.input(
                 "The calculated overhead position {} to sync movement of {} is out of the limits. The scan can be executed only in non-sync mode.Continue?".format(destination, motor),
                 data_type=options, allow_multiple=False, title="Favorites", default_value='Yes')
-            if run_or_not == 'No':
+            if run_or_not in NO_OPTIONS:
                 raise RuntimeError('Abort scan')
 
             return False
+
+    # ----------------------------------------------------------------------
+    def _go_through_waypoints(self):
+        """
+        Internal, unprotected method to go through the different waypoints.
+        """
+        macro, motion, waypoints = self.macro, self.motion, self.steps
+        self.macro.debug("_go_through_waypoints() entering...")
+
+        for _, waypoint in waypoints:
+            self.macro.debug("Waypoint iteration...")
+
+            motion_paths, delta_start, self.acq_duration = self.prepare_waypoint(waypoint)
+
+            # execute pre-move hooks
+            for hook in waypoint.get('pre-move-hooks', []):
+                hook()
+
+            start_pos, final_pos = [], []
+            for path in motion_paths:
+                start_pos.append(path.initial_user_pos)
+                final_pos.append(path.final_user_pos)
+
+            if macro.isStopped():
+                self.on_waypoints_end()
+                return
+
+            # move to start position
+            self.macro.debug("Moving to start position: %s" % repr(start_pos))
+            motion.move(start_pos)
+
+            if macro.isStopped():
+                self.on_waypoints_end()
+                return
+
+            # prepare motor(s) with the velocity required for synchronization
+            for path in motion_paths:
+                path.moveable.moveable.setVelocity(path.motor.getMaxVelocity())
+
+            if macro.isStopped():
+                self.on_waypoints_end()
+                return
+
+            self.timestamp_to_start = time.time() + delta_start
+            self.motion_event.set()
+
+            # move to waypoint end position
+            motion.move(final_pos)
+
+            self.motion_event.clear()
+
+            if macro.isStopped():
+                return self.on_waypoints_end()
+
+            # execute post-move hooks
+            for hook in waypoint.get('post-move-hooks', []):
+                hook()
+
+        self.on_waypoints_end()
+
     # ----------------------------------------------------------------------
     def scan_loop(self):
 
@@ -382,9 +443,6 @@ class CCScan(CSScan):
                     if debug:
                         self.macro.output('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
                     self._timer_worker.stop()
-                    self._data_collector.stop()
-                    for worker in self._data_workers:
-                        worker.stop()
                     break
 
                 # If there is no more time to acquire... stop!
@@ -436,10 +494,16 @@ class CCScan(CSScan):
 
     # ----------------------------------------------------------------------
     def do_restore(self):
+        if debug:
+            self.macro.output('Stopping motion')
         self.motion.stop()
+        if debug:
+            self.macro.output('Resetting motors')
         self._restore_motors()
 
         if self._has_lambda:
+            if debug:
+                self.macro.output('Stopping LambdaOnlineAnalysis')
             _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
             _lambdaonlineanalysis_proxy.StopAnalysis()
             time.sleep(0.1)
@@ -450,6 +514,9 @@ class CCScan(CSScan):
 
             if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
                 self.macro.output('Cannot stop LambdaOnlineAnalysis!')
+
+            if debug:
+                self.macro.output('Stopping LambdaOnlineAnalysis')
 
             _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
             _lambda_proxy.StopAcq()
@@ -594,8 +661,12 @@ class DataSourceWorker(object):
         self._device_attribute = tokens[-1]
         self.channel_name = source_info.full_name
 
-        self._is_counter = 'sis3820' in source_info.full_name
-        self._old_value = getattr(self._device_proxy, self._device_attribute)
+        self._is_counter = False
+        for counter_name, tango_name in counter_names.items():
+            if counter_name in source_info.full_name:
+                self._counter_proxy = PyTango.DeviceProxy('{}.{:02d}'.format(tango_name, int(source_info.full_name.split('/')[-1])))
+                self._counter_proxy.Reset()
+                self._is_counter = True
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
@@ -606,12 +677,10 @@ class DataSourceWorker(object):
             try:
                 index = self._trigger.get(block=False)
                 _start_time = time.time()
+                self.data_buffer['{:04d}'.format(index)] = getattr(self._device_proxy, self._device_attribute)
                 if self._is_counter:
-                    value = getattr(self._device_proxy, self._device_attribute)
-                    self.data_buffer['{:04d}'.format(index)] = value - self._old_value
-                    self._old_value = value
-                else:
-                    self.data_buffer['{:04d}'.format(index)] = getattr(self._device_proxy, self._device_attribute)
+                    self._counter_proxy.Reset()
+                    time.sleep(COUNTER_RESET_DELAY)
                 if debug:
                     self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
                         self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
@@ -768,8 +837,8 @@ class TimerWorker(object):
             self._timeit.append(time.time() - _start_time)
             for trigger in self._triggers:
                 trigger.put(self._point)
-            self._workers_done_barrier.wait()
             self._data_collector_trigger.put([self._point, time.time(), self._motion.readPosition(force=True)])
+            self._workers_done_barrier.wait()
             self._point += 1
 
     def time_me(self):
@@ -819,18 +888,18 @@ class scancl(Hookable):
             self.output('SYNC mode {}'.format(self.sync))
 
         if not self.sync and len(self.motors) > 1:
-            options = "Yes", "No"
+            options = YES_OPTIONS + NO_OPTIONS
             run_or_not = self.input("The sync mode is off, the positions of motors will not be syncronized. Continue?".format(self.integ_time),
                                     data_type=options, allow_multiple=False, title="Favorites", default_value='No')
-            if run_or_not == 'No':
+            if run_or_not in NO_OPTIONS:
                 self.do_scan = False
                 return
 
         if self.integ_time < 0.1:
-            options = "Yes", "No"
+            options = YES_OPTIONS + NO_OPTIONS
             run_or_not = self.input("The {} integration time is too short for continuous scans. Recommended > 0.1 sec. Continue?".format(self.integ_time),
                                     data_type=options, allow_multiple=False, title="Favorites", default_value='No')
-            if run_or_not == 'No':
+            if run_or_not in NO_OPTIONS:
                 self.do_scan = False
                 return
 
@@ -870,8 +939,8 @@ class scancl(Hookable):
     # ----------------------------------------------------------------------
     def _waypoint_generator(self):
         # returns start and further points points. Note that we pass the desired travel time
-        yield {"positions": self.start_pos, "waypoint_id": 0}
-        yield {"positions": self.final_pos, "waypoint_id": 1, "integ_time": self.integ_time, "npts": self.nsteps}
+        yield {"start_positions": self.start_pos, "positions": self.final_pos,
+               "integ_time": self.integ_time, "npts": self.nsteps}
 
 
     # ----------------------------------------------------------------------
