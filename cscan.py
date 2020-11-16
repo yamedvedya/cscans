@@ -14,7 +14,6 @@ Note: this script uses ScanDir and ScanFile from the MacroServer
 import PyTango
 import threading
 import sys
-import traceback
 from Queue import Queue
 from Queue import Empty as empty_queue
 import numpy as np
@@ -28,7 +27,7 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 
-debug = False
+debug = True
 time_me = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
@@ -68,6 +67,10 @@ class CCScan(CSScan):
         self._has_lambda = False
         self._integration_time_correction = 1
 
+        self._integration_time = None
+        self._acq_duration = None
+        self._wait_time = None
+
         num_counters = 0
         _worker_triggers = []
         _lambda_settled = False
@@ -89,6 +92,7 @@ class CCScan(CSScan):
             self.macro.output('Starting barrier for {} workers'.format(num_counters))
         _workers_done_barrier = EndMeasurementBarrier(num_counters)
         self._error_queue = Queue()
+        self._motor_mover = ExcThread(self.go_through_waypoints, '_motor_mover', self._error_queue)
 
         #We start main data collector loop
         _data_collector_trigger = Queue()
@@ -175,7 +179,7 @@ class CCScan(CSScan):
 
         travel_time = waypoint["integ_time"] * waypoint["npts"]
 
-        original_duration, cruise_duration, delta_start = travel_time, travel_time, 0
+        original_duration, self._acq_duration, self._wait_time = travel_time, travel_time, 0
         calculated_paths = []
 
         _can_be_synchro = True
@@ -194,16 +198,6 @@ class CCScan(CSScan):
             except AttributeError:
                 raise RuntimeError("{} don't have velocity parameter, cscans is impossible".format(motor))
 
-            try:
-                accel_time = motor.getAcceleration()
-            except AttributeError:
-                accel_time = 0
-                _can_be_synchro = False
-
-            if not iterate_only and not _can_be_synchro:
-                self.macro.warning("{} motion will not be coordinated".format(motor))
-                self.macro.sync = False
-
             # Find the cruise duration of motion at top velocity. For this
             # create a virtual motor which has instantaneous acceleration and
             # deceleration
@@ -212,15 +206,10 @@ class CCScan(CSScan):
             # duration of this motion at top velocity
             motor_path = MotionPath(VMotor(min_vel=base_vel, max_vel=motor_vel,
                                   accel_time=0, decel_time=0), start_position, final_position)
-            motor_path.moveable = moveable
-
-            # if really motor is moving in this waypoint
-            if motor_path.displacement > 0:
-                # recalculate time to reach maximum velocity
-                delta_start = max(delta_start, accel_time)
+            motor_path.physical_motor = moveable.moveable
 
             # recalculate cruise duration of motion at top velocity
-            if motor_path.duration > cruise_duration:
+            if motor_path.duration > self._acq_duration:
                 if debug:
                     self.macro.output(
                         'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
@@ -229,7 +218,7 @@ class CCScan(CSScan):
                         'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
                             moveable.name))
 
-                cruise_duration = motor_path.duration
+                self._acq_duration = motor_path.duration
 
             calculated_paths.append(motor_path)
 
@@ -241,27 +230,32 @@ class CCScan(CSScan):
             vmotor = path.motor
             # in the case of pseudo motors or not moving a motor...
             if path.displacement != 0:
-                moveable = path.moveable
-                motor = moveable.moveable
+                motor = path.physical_motor
 
                 old_top_velocity = motor.getVelocity()
-                new_top_vel = path.displacement / cruise_duration
+                new_top_vel = path.displacement / self._acq_duration
                 vmotor.setMaxVelocity(new_top_vel)
 
                 try:
-                    accel_t, decel_t = motor.getAcceleration(), motor.getDeceleration()
-                    vmotor.setAccelerationTime(accel_t * new_top_vel / old_top_velocity) # to keep acceleration in steps
-                    vmotor.setDecelerationTime(decel_t * new_top_vel / old_top_velocity) # to keep acceleration in steps
+                    accel_time = motor.getAcceleration() * new_top_vel / old_top_velocity # to keep acceleration in steps
+                    vmotor.setAccelerationTime(accel_time)
+                    self._wait_time = max(self._wait_time, accel_time)
+
+                    decel_time = motor.getDeceleration() * new_top_vel / old_top_velocity # to keep acceleration in steps
+                    vmotor.setDecelerationTime(decel_time)
+
+                    if not iterate_only and not _can_be_synchro:
+                        self.macro.warning("{} motion will not be coordinated".format(motor))
+                        self.macro.sync = False
+
                 except AttributeError:
                     self.macro.warning("{} motion don't have acceleration/deceleration time".format(motor))
                     self.macro.sync = False
 
                 if self.macro.sync:
-                    disp_sign = path.positive_displacement and 1 or -1
-                    base_vel = vmotor.getMinVelocity()
-                    new_initial_pos = path.initial_user_pos - accel_t * 0.5 * \
-                        disp_sign * (new_top_vel + base_vel) - disp_sign * \
-                        new_top_vel * (delta_start - accel_t)
+                    disp_sign = 1 if path.positive_displacement else -1
+                    new_initial_pos = path.initial_user_pos - disp_sign*(vmotor.displacement_reach_max_vel +
+                                                                         new_top_vel * (self._wait_time - accel_time))
                     if self._check_motor_limits(motor, new_initial_pos):
                         path.setInitialUserPos(new_initial_pos)
                     else:
@@ -274,7 +268,7 @@ class CCScan(CSScan):
                     else:
                         _reset_positions = True
                 else:
-                    delta_start = 0
+                    self._wait_time = 0
 
         if _reset_positions:
             for path, original_start, original_stop in zip(calculated_paths, waypoint['start_positions'],
@@ -291,9 +285,9 @@ class CCScan(CSScan):
                                                                                            old_top_velocity,
                                                                                            new_top_vel))
 
-        self._integration_time_correction = cruise_duration/original_duration
+        self._integration_time_correction = self._acq_duration/original_duration
 
-        return calculated_paths, delta_start, cruise_duration
+        return calculated_paths
 
     # ----------------------------------------------------------------------
     def _check_motor_limits(self, motor, destination):
@@ -314,13 +308,24 @@ class CCScan(CSScan):
         """
         Internal, unprotected method to go through the different waypoints.
         """
-        macro, motion, waypoints = self.macro, self.motion, self.steps
         self.macro.debug("_go_through_waypoints() entering...")
 
-        for _, waypoint in waypoints:
-            self.macro.debug("Waypoint iteration...")
+        for _, waypoint in self.steps:
 
-            motion_paths, delta_start, self.acq_duration = self.prepare_waypoint(waypoint)
+            motion_paths = self.prepare_waypoint(waypoint)
+
+            # get integ_time for this loop
+            _, step_info = self.period_steps.next()
+            self._data_collector.set_new_step_info(step_info)
+            self._integration_time = step_info['integ_time'] * self._integration_time_correction
+            if self._integration_time_correction > 1:
+                self.macro.output('Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
+            self._timer_worker.set_new_period(self._integration_time)
+
+            self._wait_time -= self._integration_time
+
+            if self._has_lambda:
+                self._setup_lambda(self._integration_time)
 
             # execute pre-move hooks
             for hook in waypoint.get('pre-move-hooks', []):
@@ -331,35 +336,41 @@ class CCScan(CSScan):
                 start_pos.append(path.initial_user_pos)
                 final_pos.append(path.final_user_pos)
 
-            if macro.isStopped():
+            if debug:
+                self.macro.output('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
+            if self.macro.isStopped():
                 self.on_waypoints_end()
                 return
 
             # move to start position
-            self.macro.debug("Moving to start position: %s" % repr(start_pos))
-            motion.move(start_pos)
+            if debug:
+                self.macro.output("Moving to start position: {}".format(start_pos))
+            self.motion.move(start_pos)
 
-            if macro.isStopped():
+            if self.macro.isStopped():
                 self.on_waypoints_end()
                 return
 
             # prepare motor(s) with the velocity required for synchronization
             for path in motion_paths:
-                path.moveable.moveable.setVelocity(path.motor.getMaxVelocity())
+                path.physical_motor.setVelocity(path.motor.getMaxVelocity())
+                path.physical_motor.setAcceleration(path.motor.getAccelerationTime())
+                path.physical_motor.setDeceleration(path.motor.getDecelerationTime())
 
-            if macro.isStopped():
+            if self.macro.isStopped():
                 self.on_waypoints_end()
                 return
 
-            self.timestamp_to_start = time.time() + delta_start
             self.motion_event.set()
 
             # move to waypoint end position
-            motion.move(final_pos)
+            if debug:
+                self.macro.output("Moving to final position: {}".format(final_pos))
+            self.motion.move(final_pos)
 
             self.motion_event.clear()
 
-            if macro.isStopped():
+            if self.macro.isStopped():
                 return self.on_waypoints_end()
 
             # execute post-move hooks
@@ -375,10 +386,9 @@ class CCScan(CSScan):
             self.macro.output("scan loop() entering...")
 
         macro = self.macro
-        manager = macro.getManager()
+        # manager = macro.getManager()
         scream = False
         motion_event = self.motion_event
-        integ_time = 0
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
@@ -388,23 +398,10 @@ class CCScan(CSScan):
             for hook in macro.getHooks('pre-acq'):
                 hook()
 
-        # get integ_time for this loop
-        try:
-            _, step_info = self.period_steps.next()
-            self._data_collector.set_new_step_info(step_info)
-            integ_time = step_info['integ_time'] * self._integration_time_correction
-            if self._integration_time_correction > 1:
-                self.macro.output('Integration time was corrected to {} due to slow motor(s)'.format(integ_time))
-            self._timer_worker.set_new_period(integ_time)
-        except StopIteration:
-            self._all_waypoints_finished = True
-
-        if self._has_lambda:
-            self._setup_lambda(integ_time)
-
         # start move & acquisition as close as possible
         # from this point on synchronization becomes critical
-        manager.add_job(self.go_through_waypoints)
+        self._motor_mover.start()
+        # manager.add_job(self.go_through_waypoints)
 
         while not self._all_waypoints_finished:
 
@@ -413,17 +410,11 @@ class CCScan(CSScan):
             # wait for motor to reach start position
             motion_event.wait()
 
-            # allow scan to stop
-            macro.checkPoint()
-
-            if debug:
-                self.macro.output("wait for motor to reach max velocity")
             # wait for motor to reach max velocity
-            deltat = self.timestamp_to_start - time.time() - integ_time
             if debug:
-                self.macro.output('Delta T: {}'.format(deltat))
-            if deltat > 0:
-                time.sleep(deltat)
+                self.macro.output("wait {} for motor to reach max velocity".format(self._wait_time))
+            if self._wait_time > 0:
+                time.sleep(self._wait_time)
 
             acq_start_time = time.time()
             self._data_collector.set_acq_start_time(acq_start_time)
@@ -447,7 +438,7 @@ class CCScan(CSScan):
 
                 # If there is no more time to acquire... stop!
                 elapsed_time = time.time() - acq_start_time
-                if elapsed_time > self.acq_duration + 3 * integ_time:
+                if elapsed_time > self._acq_duration + 3 * self._integration_time:
                     if debug:
                         self.macro.output("Stopping all workers")
                     # motion_event.clear()
@@ -463,7 +454,7 @@ class CCScan(CSScan):
 
             _timeout_start_time = time.time()
             while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status == 'collecting':
-                time.sleep(integ_time)
+                time.sleep(self._integration_time)
 
             if self._data_collector.status == 'collecting':
                 if debug:
@@ -483,7 +474,7 @@ class CCScan(CSScan):
                 hook()
 
         env = self._env
-        env['acqtime'] = self._data_collector.last_collected_point*integ_time
+        env['acqtime'] = self._data_collector.last_collected_point*self._integration_time
         env['delaytime'] = time.time() - env['acqtime']
 
         if debug:
@@ -828,7 +819,6 @@ class TimerWorker(object):
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
     def _main_loop(self):
-
         while not self._worker.stopped():
             if debug:
                 self._macro.output('Start timer point {}'.format(self._point))
