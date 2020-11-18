@@ -859,12 +859,10 @@ class scancl(Hookable):
         self.motors = []
         self.start_pos = []
         self.final_pos = []
+        self.originalPositions = []
 
         for mot, start, final in zip(motor, start_pos, final_pos):
-            new_mot, new_start, new_final = self._parse_motors(mot, start, final)
-            self.motors += new_mot
-            self.start_pos += new_start
-            self.final_pos += new_final
+            motors, start_pos, final_pos, self._parse_motors(mot, start, final)
 
         self.nsteps = nb_steps
         self.integ_time = integ_time
@@ -892,14 +890,6 @@ class scancl(Hookable):
             if run_or_not in NO_OPTIONS:
                 self.do_scan = False
                 return
-
-        if self.mode == 'dscan':
-            self._motion = self.getMotion([m.getName() for m in self.motors])
-            self.originalPositions = np.array(self._motion.readPosition(force=True))
-            if debug:
-                self.output('Original positions: {}'.format(self.originalPositions))
-            self.start_pos += self.originalPositions
-            self.final_pos += self.originalPositions
 
         # the "env" dictionary may be passed as an option
         env = opts.get('env', {})
@@ -947,7 +937,7 @@ class scancl(Hookable):
     def do_restore(self):
         if self.mode == 'dscan':
             self.output("Returning to start positions {}".format(self.originalPositions))
-            self._motion.move(self.originalPositions)
+            self.getMotion([m.getName() for m in self.motors]).move(self.originalPositions)
 
     # ----------------------------------------------------------------------
     def _parse_motors(self, motor, start_pos, end_pos):
@@ -972,6 +962,9 @@ class scancl(Hookable):
                     if debug:
                         self.output('tango_motors {}'.format(tango_motors))
                         self.output('channel_names {}'.format(channel_names))
+
+                    self.output('start_pos: {}, end_pos: {}'.format(start_pos, end_pos))
+                    raise RuntimeError('Test run')
 
                     _motor_proxy.PositionSim = start_pos
                     _sim_start_pos = _motor_proxy.ResultSim
@@ -1002,13 +995,22 @@ class scancl(Hookable):
                     for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
                         self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
 
-                        return motors, new_start_pos, new_end_pos
+                    return self._parse_dscan_pos(motors, new_start_pos, new_end_pos)
                 except:
                     raise RuntimeError('Cannot parse {} to components, the cscan cannot be executed'.format(motor.getName()))
             else:
-                return [motor], [start_pos], [end_pos]
+                return self._parse_dscan_pos(motor, start_pos, end_pos)
         except AttributeError:
-            return [motor], [start_pos], [end_pos]
+            return self._parse_dscan_pos(motor, start_pos, end_pos)
+
+    # ----------------------------------------------------------------------
+    def _parse_dscan_pos(self, motor, start, stop):
+        motion = self.getMotion([m.getName() for m in motor])
+        originalPositions = np.array(motion.readPosition(force=True))
+        if self.mode == 'dscan':
+            return start + originalPositions, stop + originalPositions, originalPositions
+        else:
+            return start, stop, originalPositions
 
     # ----------------------------------------------------------------------
     def _get_command(self, command):
