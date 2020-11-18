@@ -880,7 +880,6 @@ class scancl(Hookable):
         except Exception as err:
             self._timeme = False
 
-
         if debug:
             self.output('SYNC mode {}'.format(self._sync))
 
@@ -1022,11 +1021,11 @@ class scancl(Hookable):
 
     # ----------------------------------------------------------------------
     def _parse_dscan_pos(self, motor, start, stop):
-        original_positions = self.getMotion([motor.getName()]).readPosition(force=True)
+        original_position = self.getMotion([motor.getName()]).readPosition(force=True)
         if self.mode == 'dscan':
-            return [motor], [start + original_positions], [stop + original_positions], original_positions
+            return [motor], [start + original_position[0]], [stop + original_position[0]], original_position
         else:
-            return [motor], [start], [stop], original_positions
+            return [motor], [start], [stop], original_position
 
     # ----------------------------------------------------------------------
     def _get_command(self, command):
