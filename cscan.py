@@ -27,8 +27,7 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 
-debug = True
-time_me = False
+debug = False
 
 # this parameters defines whether we try to synchronise movement of many motors (if there are)
 TIMEOUT = 1
@@ -246,13 +245,13 @@ class CCScan(CSScan):
 
                     if not iterate_only and not _can_be_synchro:
                         self.macro.warning("{} motion will not be coordinated".format(motor))
-                        self.macro.sync = False
+                        self.macro._sync = False
 
                 except AttributeError:
                     self.macro.warning("{} motion don't have acceleration/deceleration time".format(motor))
-                    self.macro.sync = False
+                    self.macro._sync = False
 
-                if self.macro.sync:
+                if self.macro._sync:
                     disp_sign = 1 if path.positive_displacement else -1
                     new_initial_pos = path.initial_user_pos - disp_sign*(vmotor.displacement_reach_max_vel +
                                                                          new_top_vel * (self._wait_time - accel_time))
@@ -464,7 +463,7 @@ class CCScan(CSScan):
             for worker in self._data_workers:
                 worker.stop()
 
-            if time_me:
+            if self.macro._timeme:
                 self._timer_worker.time_me()
 
         if hasattr(macro, 'getHooks'):
@@ -682,7 +681,7 @@ class DataSourceWorker(object):
             except Exception as err:
                 self._macro.output('Error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
 
-        if time_me:
+        if self._macro._timeme:
             self._macro.output('Mean time to get data for worker {} is {}'.format(self.channel_name,
                                                                                   np.mean(_timeit)))
 
@@ -748,7 +747,7 @@ class LambdaRoiWorker(object):
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
 
-        if time_me:
+        if self._macro._timeme:
             self._macro.output('Mean time to get data for worker {} is {}'.format(self.channel_name,
                                                                                   np.mean(_timeit)))
 
@@ -872,14 +871,20 @@ class scancl(Hookable):
         self.integ_time = integ_time
 
         try:
-            self.sync = self.getEnv('cscan_sync')
+            self._sync = self.getEnv('cscan_sync')
         except Exception as err:
-            self.sync = True
+            self._sync = True
+
+        try:
+            self._timeme = self.getEnv('cscan_timeme')
+        except Exception as err:
+            self._timeme = False
+
 
         if debug:
-            self.output('SYNC mode {}'.format(self.sync))
+            self.output('SYNC mode {}'.format(self._sync))
 
-        if not self.sync and len(self.motors) > 1:
+        if not self._sync and len(self.motors) > 1:
             options = YES_OPTIONS + NO_OPTIONS
             run_or_not = self.input("The sync mode is off, the positions of motors will not be syncronized. Continue?".format(self.integ_time),
                                     data_type=options, allow_multiple=False, title="Favorites", default_value='No')
@@ -969,13 +974,13 @@ class scancl(Hookable):
 
                     _, real_start, real_finish, real_original = self._parse_dscan_pos(motor, start_pos, end_pos)
 
-                    _motor_proxy.PositionSim = real_start
+                    _motor_proxy.PositionSim = real_start[0]
                     _sim_start_pos = _motor_proxy.ResultSim
 
-                    _motor_proxy.PositionSim = real_finish
+                    _motor_proxy.PositionSim = real_finish[0]
                     _sim_end_pos = _motor_proxy.ResultSim
 
-                    _motor_proxy.PositionSim = real_original
+                    _motor_proxy.PositionSim = real_original[0]
                     _sim_original_pos = _motor_proxy.ResultSim
 
                     motors = []
@@ -1017,11 +1022,11 @@ class scancl(Hookable):
 
     # ----------------------------------------------------------------------
     def _parse_dscan_pos(self, motor, start, stop):
-        original_positions = self.getMotion(motor.getName()).readPosition(force=True)
+        original_positions = self.getMotion([motor.getName()]).readPosition(force=True)
         if self.mode == 'dscan':
-            return [motor], [start + original_positions], [stop + original_positions], [original_positions]
+            return [motor], [start + original_positions], [stop + original_positions], original_positions
         else:
-            return [motor], [start], [stop], [original_positions]
+            return [motor], [start], [stop], original_positions
 
     # ----------------------------------------------------------------------
     def _get_command(self, command):
@@ -1241,6 +1246,7 @@ class cscan_senv(Macro):
         self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
         self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuator")
         self.setEnv("cscan_sync", True)
+        self.setEnv("cscan_timeme", False)
 
 # ----------------------------------------------------------------------
 #                       Auxiliary classes
