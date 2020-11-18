@@ -859,10 +859,14 @@ class scancl(Hookable):
         self.motors = []
         self.start_pos = []
         self.final_pos = []
-        self.originalPositions = []
+        self.original_positions = []
 
         for mot, start, final in zip(motor, start_pos, final_pos):
-            motors, start_pos, final_pos, self._parse_motors(mot, start, final)
+            motor, start_pos, final_pos, original_pos = self._parse_motors(mot, start, final)
+            self.motors += motor
+            self.start_pos += start_pos
+            self.final_pos += final_pos
+            self.original_positions += original_pos
 
         self.nsteps = nb_steps
         self.integ_time = integ_time
@@ -936,8 +940,8 @@ class scancl(Hookable):
     # ----------------------------------------------------------------------
     def do_restore(self):
         if self.mode == 'dscan':
-            self.output("Returning to start positions {}".format(self.originalPositions))
-            self.getMotion([m.getName() for m in self.motors]).move(self.originalPositions)
+            self.output("Returning to start positions {}".format(self.original_positions))
+            self.getMotion([m.getName() for m in self.motors]).move(self.original_positions)
 
     # ----------------------------------------------------------------------
     def _parse_motors(self, motor, start_pos, end_pos):
@@ -963,18 +967,21 @@ class scancl(Hookable):
                         self.output('tango_motors {}'.format(tango_motors))
                         self.output('channel_names {}'.format(channel_names))
 
-                    self.output('start_pos: {}, end_pos: {}'.format(start_pos, end_pos))
-                    raise RuntimeError('Test run')
+                    _, real_start, real_finish, real_original = self._parse_dscan_pos(motor, start_pos, end_pos)
 
-                    _motor_proxy.PositionSim = start_pos
+                    _motor_proxy.PositionSim = real_start
                     _sim_start_pos = _motor_proxy.ResultSim
 
-                    _motor_proxy.PositionSim = end_pos
+                    _motor_proxy.PositionSim = real_finish
                     _sim_end_pos = _motor_proxy.ResultSim
+
+                    _motor_proxy.PositionSim = real_original
+                    _sim_original_pos = _motor_proxy.ResultSim
 
                     motors = []
                     new_start_pos = []
                     new_end_pos = []
+                    new_original_pos = []
 
                     all_motors = self.getMotors()
                     for motor_name, channel_name in zip(tango_motors, channel_names):
@@ -991,11 +998,16 @@ class scancl(Hookable):
                                     if motor_name in tockens[0]:
                                         new_end_pos.append(float(tockens[1].strip()))
 
+                                for entry in _sim_original_pos:
+                                    tockens = entry.split(':')
+                                    if motor_name in tockens[0]:
+                                        new_original_pos.append(float(tockens[1].strip()))
+
                     self.output('Calculated positions for {} :'.format(motor.getName()))
                     for motor, start_pos, end_pos in zip(motors, new_start_pos, new_end_pos):
                         self.output('sub_motor {} start_pos {} final_pos {}'.format(motor, start_pos, end_pos))
 
-                    return self._parse_dscan_pos(motors, new_start_pos, new_end_pos)
+                    return motors, new_start_pos, new_end_pos, new_original_pos
                 except:
                     raise RuntimeError('Cannot parse {} to components, the cscan cannot be executed'.format(motor.getName()))
             else:
@@ -1005,12 +1017,11 @@ class scancl(Hookable):
 
     # ----------------------------------------------------------------------
     def _parse_dscan_pos(self, motor, start, stop):
-        motion = self.getMotion([m.getName() for m in motor])
-        originalPositions = np.array(motion.readPosition(force=True))
+        original_positions = self.getMotion(motor.getName()).readPosition(force=True)
         if self.mode == 'dscan':
-            return start + originalPositions, stop + originalPositions, originalPositions
+            return [motor], [start + original_positions], [stop + original_positions], [original_positions]
         else:
-            return start, stop, originalPositions
+            return [motor], [start], [stop], [original_positions]
 
     # ----------------------------------------------------------------------
     def _get_command(self, command):
