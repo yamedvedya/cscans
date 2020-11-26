@@ -10,4 +10,13 @@
 !agilent_libs/waveform_generator.py
 !agilent_libs/__init__.py
 !tocken
+!cscans
+!cscans/__init__.py
+!cscans/cscan_axillary_functions.py
+!cscans/cscan_ccscan.py
+!cscans/cscan_constants.py
+!cscans/cscan_data_collector.py
+!cscans/cscan_data_workers.py
+!cscans/cscan_hklcscan.py
+!cscans/cscan_scancl.py
 !lms.py

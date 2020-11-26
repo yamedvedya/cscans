@@ -1,0 +1,25 @@
+'''
+This file contains all constants, needed by cscans
+
+Author yury.matveev@desy.de
+'''
+
+debug = False
+
+TIMEOUT = 1
+TIMEOUT_LAMBDA = 1
+REFRESH_PERIOD = 5e-4
+
+DUMMY_MOTOR = 'exp_dmy01'
+
+YES_OPTIONS = ['Yes', 'yes', 'y']
+NO_OPTIONS = ['No', 'no', 'n']
+
+COUNTER_RESET_DELAY = 0
+
+HKL_GRID_RESOLUTION = 0.0005
+
+# Super ugly, should be better solution:
+counter_names = {'sis3820': 'p23/counter/eh'}
+timer_names = {'eh_t01': 'p23/dgg2/eh.01',
+               'eh_t02': 'p23/dgg2/eh.02'}
