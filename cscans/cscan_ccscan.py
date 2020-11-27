@@ -111,7 +111,7 @@ class CCScan(CSScan):
             _time_out = time.time()
             while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
                 time.sleep(0.1)
-                macro.checkPoint()
+                self.macro.checkPoint()
 
             if _lambda_proxy.State() != PyTango.DevState.ON:
                 self.macro.output(_lambda_proxy.State())
