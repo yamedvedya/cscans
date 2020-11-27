@@ -339,7 +339,7 @@ class CCScan(CSScan):
             if self.macro.debug_mode:
                 self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
             if self.macro.isStopped():
-                self.on_waypoints_end()
+                self.set_all_waypoints_finished(True)
                 return
 
             # move to start position
@@ -348,7 +348,7 @@ class CCScan(CSScan):
             self.motion.move(start_pos)
 
             if self.macro.isStopped():
-                self.on_waypoints_end()
+                self.set_all_waypoints_finished(True)
                 return
 
             # prepare motor(s) with the velocity required for synchronization
@@ -358,7 +358,7 @@ class CCScan(CSScan):
                 path.physical_motor.setDeceleration(path.motor.getDecelerationTime())
 
             if self.macro.isStopped():
-                self.on_waypoints_end()
+                self.set_all_waypoints_finished(True)
                 return
 
             self.motion_event.set()
@@ -369,15 +369,17 @@ class CCScan(CSScan):
             self.motion.move(final_pos)
 
             self.motion_event.clear()
+            # self.macro.output("Clear motion event, state: {}".format(self.motion_event.is_set()))
 
             if self.macro.isStopped():
-                return self.on_waypoints_end()
+                self.set_all_waypoints_finished(True)
+                return
 
             # execute post-move hooks
             for hook in waypoint.get('post-move-hooks', []):
                 hook()
 
-        self.on_waypoints_end()
+        self.set_all_waypoints_finished(True)
 
     # ----------------------------------------------------------------------
     def scan_loop(self):
@@ -390,7 +392,6 @@ class CCScan(CSScan):
         macro = self.macro
         # manager = macro.getManager()
         scream = False
-        motion_event = self.motion_event
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('pre-scan'):
@@ -410,7 +411,7 @@ class CCScan(CSScan):
             if self.macro.debug_mode:
                 self.macro.debug("waiting for motion event")
             # wait for motor to reach start position
-            motion_event.wait()
+            self.motion_event.wait()
 
             # wait for motor to reach max velocity
             if self.macro.debug_mode:
@@ -428,7 +429,7 @@ class CCScan(CSScan):
             self._timer_worker.start()
             _finished = False
             #after first point generate triggers every integ_time
-            while motion_event.is_set() and not _finished:
+            while self.motion_event.is_set() and not _finished:
 
                 # allow scan to stop
                 macro.checkPoint()
@@ -467,10 +468,6 @@ class CCScan(CSScan):
         self._timer_worker.stop()
 
         if self.macro.debug_mode:
-            self.macro.debug("waiting for motion end")
-        self.motion_end_event.wait()
-
-        if self.macro.debug_mode:
             self.macro.debug("waiting for data collector finishes")
 
         _timeout_start_time = time.time()
@@ -505,8 +502,11 @@ class CCScan(CSScan):
             header = 'Point;'
             for name, values in self._timing_logger.items():
                 self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
-                data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
-                header += name + ';'
+                try:
+                    data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
+                    header += name + ';'
+                except:
+                    pass
 
             file_name = os.path.join(self._macro.getEnv('ScanDir'), os.path.splitext(self._macro.getEnv('ScanFile'))[0]
                                      + str(self._macro.getEnv('ScanID')) + '.tlog')
