@@ -240,4 +240,5 @@ class cscan_senv(Macro):
         self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuator")
         self.setEnv("cscan_sync", True)
         self.setEnv("cscan_timeme", False)
+        self.setEnv("cscan_debug", False)
 
