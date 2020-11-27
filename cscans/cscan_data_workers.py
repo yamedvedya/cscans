@@ -93,7 +93,7 @@ class TimerWorker(object):
 # ----------------------------------------------------------------------
 
 class DataSourceWorker(object):
-    def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro, timing_logger):
+    def __init__(self, source_info, trigger, workers_done_barrier, error_queue, macro, timing_logger):
         # arguments:
         # index = worker index
         # channel_info - channels information from measurement group
@@ -102,7 +102,6 @@ class DataSourceWorker(object):
         # error_queue - queue to report problems
         # macro - link to marco
 
-        self._index = index
         self._source_info = source_info
         self._trigger = trigger
         self._macro = macro
@@ -136,7 +135,7 @@ class DataSourceWorker(object):
                 if self._is_counter:
                     self._counter_proxy.Reset()
                     time.sleep(COUNTER_RESET_DELAY)
-                self._workers_done_barrier.report(self._index)
+                self._workers_done_barrier.report()
                 self._timing_logger[self.channel_label].append(time.time() - _start_time)
 
                 if self._macro.debug_mode:
@@ -156,7 +155,7 @@ class DataSourceWorker(object):
 
 
 class LambdaRoiWorker(object):
-    def __init__(self, index, source_info, trigger, error_queue, macro, timing_logger):
+    def __init__(self, source_info, trigger, error_queue, macro, timing_logger):
         # arguments:
         # index = worker index
         # channel_info - channels information from measurement group
@@ -165,7 +164,6 @@ class LambdaRoiWorker(object):
         # error_queue - queue to report problems
         # macro - link to marco
 
-        self._index = index
         self._trigger = trigger
         self._macro = macro
         self._timing_logger = timing_logger
@@ -245,7 +243,6 @@ class LambdaWorker(object):
             try:
                 index = self._trigger.get(block=False)
                 self.data_buffer['{:04d}'.format(index)] = -1
-                self._workers_done_barrier.report(self._index)
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
 
@@ -311,7 +308,7 @@ class MotorPosition(object):
             try:
                 ind = self._trigger.get(block=False)
                 self.position = self._device_proxy.Position
-                self._motors_reported_barrier.report(ind)
+                self._motors_reported_barrier.report()
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
 

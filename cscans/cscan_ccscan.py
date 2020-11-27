@@ -106,11 +106,11 @@ class CCScan(CSScan):
             if 'lmbd' in channel_info.label:
                 if 'lmbd_countsroi' in channel_info.label:
                     self._timing_logger[channel_info.label] = []
-                    self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
+                    self._data_workers.append(LambdaRoiWorker(channel_info, _worker_triggers[ind],
                                                                self._error_queue, self.macro, self._timing_logger))
                     ind += 1
                 elif channel_info.label == 'lmbd':
-                    self._data_workers.append(LambdaWorker(ind, channel_info, _worker_triggers[ind],
+                    self._data_workers.append(LambdaWorker(channel_info, _worker_triggers[ind],
                                                            _workers_done_barrier, self._error_queue,
                                                            self.macro))
                     ind += 1
@@ -118,7 +118,7 @@ class CCScan(CSScan):
                     raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
             else:
                 self._timing_logger[channel_info.label] = []
-                self._data_workers.append(DataSourceWorker(ind, channel_info, _worker_triggers[ind],
+                self._data_workers.append(DataSourceWorker(channel_info, _worker_triggers[ind],
                                                            _workers_done_barrier, self._error_queue, self.macro,
                                                            self._timing_logger))
                 ind += 1
@@ -444,9 +444,9 @@ class CCScan(CSScan):
                     break
 
                 if self._movement_direction:
-                    _finished = self._timer_worker.last_position > self._position_stop
+                    _finished = not self._timer_worker.last_position < self._position_stop
                 else:
-                    _finished = self._timer_worker.last_position < self._position_stop
+                    _finished = not self._timer_worker.last_position > self._position_stop
 
                 # # If there is no more time to acquire... stop!
                 # elapsed_time = time.time() - acq_start_time

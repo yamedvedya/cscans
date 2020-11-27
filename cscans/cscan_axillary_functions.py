@@ -17,25 +17,16 @@ from cscan_constants import *
 class EndMeasurementBarrier():
 
     def __init__(self, n_workers):
+        self._n_reported_workers = 0
         self._n_workers = n_workers
-        self._workers_report = [0 for _ in range(n_workers)]
 
-    # ----------------------------------------------------------------------
-    def _check_barrier(self):
-        prod = 1
-        for value in self._workers_report:
-            prod *= value
-        return prod
-
-    # ----------------------------------------------------------------------
     def wait(self):
-        while not self._check_barrier():
+        while self._n_reported_workers < self._n_workers:
             time.sleep(REFRESH_PERIOD)
-        self._workers_report = [0 for _ in range(self._n_workers)]
+        self._n_reported_workers = 0
 
-    # ----------------------------------------------------------------------
-    def report(self, ind):
-        self._workers_report[ind] = 1
+    def report(self):
+        self._n_reported_workers += 1
 
 # ----------------------------------------------------------------------
 class ExcThread(threading.Thread):
