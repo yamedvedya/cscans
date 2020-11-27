@@ -434,6 +434,7 @@ class CCScan(CSScan):
                         self.macro.debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
                     self._timer_worker.stop()
                     break
+
                 if self._movement_direction:
                     _finished = self._timer_worker.last_position > self._position_stop
                 else:
