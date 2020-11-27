@@ -63,8 +63,8 @@ class TimerWorker(object):
             self._point += 1
 
     def time_me(self):
-            self._macro.output('Mean acquisition time: {}'.format(np.mean(self._time_timer)))
-            self._macro.output('Mean datacollecting time: {}'.format(np.mean(self._time_acq)))
+        self._macro.output('Acquisition: median {:.4f} max {:.4f}'.format(np.median(self._time_timer), np.max(self._time_timer)))
+        self._macro.output('Data collecting: median {:.4f} max {:.4f}'.format(np.median(self._time_acq), np.max(self._time_acq)))
 
     def stop(self):
         self._worker.stop()
@@ -101,6 +101,7 @@ class DataSourceWorker(object):
         self._device_proxy = PyTango.DeviceProxy('/'.join(tokens[2:-1]))
         self._device_attribute = tokens[-1]
         self.channel_name = source_info.full_name
+        self.channel_label = source_info.label
 
         self._is_counter = False
         for counter_name, tango_name in counter_names.items():
@@ -132,8 +133,7 @@ class DataSourceWorker(object):
                 self._macro.output('Error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
 
         if self._macro._timeme:
-            self._macro.output('Mean time to get data for worker {} is {}'.format(self.channel_name,
-                                                                                  np.mean(_timeit)))
+            self._macro.output('{:s}: median {:.4f} time: {:.4f}'.format(self.channel_label, np.median(_timeit), np.max(_timeit)))
 
     def stop(self):
         self._worker.stop()
@@ -170,6 +170,7 @@ class LambdaRoiWorker(object):
             self._correction_needed = False
 
         self.channel_name = source_info.full_name
+        self.channel_label = source_info.label
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
@@ -197,8 +198,7 @@ class LambdaRoiWorker(object):
                 time.sleep(REFRESH_PERIOD)
 
         if self._macro._timeme:
-            self._macro.output('Mean time to get data for worker {} is {}'.format(self.channel_name,
-                                                                                  np.mean(_timeit)))
+            self._macro.output('{:s}: median {:.4f} time: {:.4f}'.format(self.channel_label, np.median(_timeit), np.max(_timeit)))
 
     def stop(self):
         self._worker.stop()
