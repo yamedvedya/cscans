@@ -57,7 +57,13 @@ class scancl(Hookable):
         except Exception as err:
             self.timeme = False
 
-        self.debug('SYNC mode {}'.format(self._sync))
+        try:
+            self.debug_mode = self.getEnv('cscan_debug')
+        except Exception as err:
+            self.debug_mode = False
+
+        if self.debug_mode:
+            self.debug('SYNC mode {}'.format(self._sync))
 
         if not self._sync and len(self.motors) > 1:
             options = YES_OPTIONS + NO_OPTIONS
@@ -158,8 +164,9 @@ class scancl(Hookable):
 
                     channel_names = [device.split('/')[-1].replace('.', '/') for device in tango_motors]
 
-                    self.debug('tango_motors {}'.format(tango_motors))
-                    self.debug('channel_names {}'.format(channel_names))
+                    if self.debug_mode:
+                        self.debug('tango_motors {}'.format(tango_motors))
+                        self.debug('channel_names {}'.format(channel_names))
 
                     _, real_start, real_finish, real_original = self._parse_dscan_pos(motor, start_pos, end_pos)
 

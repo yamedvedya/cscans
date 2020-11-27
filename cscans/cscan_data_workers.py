@@ -49,20 +49,25 @@ class TimerWorker(object):
 
     def _main_loop(self):
         while not self._worker.stopped():
-            self._macro.debug('Start timer point {}'.format(self._point))
+
+            if self._macro.debug_mode:
+                self._macro.debug('Start timer point {}'.format(self._point))
+
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
-            self._timing_logger[self._point] = {'acquisition': time.time() - _start_time}
+            self._timing_logger['Acquisition'].append(time.time() - _start_time)
+
+            _start_time = time.time()
+            position = self._motion.readPosition(force=True)
+            self.last_position = position[0]
+            self._data_collector_trigger.put([self._point, time.time(), position])
+            self._timing_logger['Position_measurement'].append(time.time() - _start_time)
 
             _start_time = time.time()
             for trigger in self._triggers:
                 trigger.put(self._point)
-
-            position = self._motion.readPosition(force=True)
-            self.last_position = position[0]
-            self._data_collector_trigger.put([self._point, time.time(), position])
             self._workers_done_barrier.wait()
-            self._timing_logger[self._point]['instant_data_collection'] = time.time() - _start_time
+            self._timing_logger['Data_collection'].append(time.time() - _start_time)
 
             self._point += 1
 
@@ -124,16 +129,12 @@ class DataSourceWorker(object):
                 if self._is_counter:
                     self._counter_proxy.Reset()
                     time.sleep(COUNTER_RESET_DELAY)
-
                 self._workers_done_barrier.report()
+                self._timing_logger[self.channel_label].append(time.time() - _start_time)
 
-                self._macro.debug('Worker {} was triggered, point {} with data {} in buffer'.format(
-                    self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
-
-
-                self._timing_logger[self._point]['instant_data_collection']
-
-                _timeit.append(time.time()-_start_time)
+                if self._macro.debug_mode:
+                    self._macro.debug('Worker {} was triggered, point {} with data {} in buffer'.format(
+                                      self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
             except Exception as err:
@@ -148,7 +149,7 @@ class DataSourceWorker(object):
 
 
 class LambdaRoiWorker(object):
-    def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro):
+    def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro, timing_logger):
         # arguments:
         # index = worker index
         # channel_info - channels information from measurement group
@@ -161,6 +162,7 @@ class LambdaRoiWorker(object):
         self._trigger = trigger
         self._macro = macro
         self._workers_done_barrier = workers_done_barrier
+        self._timing_logger = timing_logger
 
         self.data_buffer = {}
         self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
@@ -187,14 +189,18 @@ class LambdaRoiWorker(object):
                 _start_time = time.time()
                 while time.time() - _start_time < TIMEOUT:
                     if self._device_proxy.lastanalyzedframe >= index + 1:
+
                         data = self._device_proxy.getroiforframe([self._channel, index + 1])
                         if self._correction_needed:
                             data *= self._attenuator_proxy.Position
-                        self.data_buffer['{:04d}'.format(index)] = data
-                        self._macro.debug('Lambda RoI {} was triggered, point {} with data {} in buffer'.format(
-                                            self._channel, index, self.data_buffer['{:04d}'.format(index)]))
                         self._workers_done_barrier.report()
-                        _timeit.append(time.time()-_start_time)
+                        self._timing_logger[self.channel_label].append(time.time() - _start_time)
+
+                        self.data_buffer['{:04d}'.format(index)] = data
+                        if self._macro.debug_mode:
+                            self._macro.debug('Lambda RoI {} was triggered, point {} with data {} in buffer'.format(
+                                                self._channel, index, self.data_buffer['{:04d}'.format(index)]))
+
                         break
                     else:
                         time.sleep(REFRESH_PERIOD)
