@@ -445,9 +445,9 @@ class CCScan(CSScan):
                     break
 
                 if self._movement_direction:
-                    _finished = not self._timer_worker.last_position < self._position_stop
+                    _finished = self._timer_worker.last_position > self._position_stop
                 else:
-                    _finished = not self._timer_worker.last_position > self._position_stop
+                    _finished = self._timer_worker.last_position < self._position_stop
 
                 # # If there is no more time to acquire... stop!
                 # elapsed_time = time.time() - acq_start_time
