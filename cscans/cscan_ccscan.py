@@ -48,6 +48,9 @@ class CCScan(CSScan):
         self._position_start = None
         self._position_stop = None
 
+        if self.macro.timme:
+            self._timing_logger = {}
+
         self._scan_in_process = False
 
         num_counters = 0
@@ -84,21 +87,24 @@ class CCScan(CSScan):
             if 'eh_t' in channel_info.label:
                 self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue,
                                                  _worker_triggers, _data_collector_trigger, _workers_done_barrier,
-                                                 self.macro, self.motion)
+                                                 self.macro, self.motion, self._timing_logger)
             if 'lmbd' in channel_info.label:
                 if 'lmbd_countsroi' in channel_info.label:
                     self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
-                                                               _workers_done_barrier, self._error_queue, self.macro))
+                                                               _workers_done_barrier, self._error_queue,
+                                                              self.macro, self._timing_logger))
                     ind += 1
                 elif channel_info.label == 'lmbd':
                     self._data_workers.append(LambdaWorker(channel_info, _worker_triggers[ind],
-                                                               _workers_done_barrier, self._error_queue, self.macro))
+                                                           _workers_done_barrier, self._error_queue,
+                                                           self.macro))
                     ind += 1
                 else:
                     raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
             else:
                 self._data_workers.append(DataSourceWorker(ind, channel_info, _worker_triggers[ind],
-                                                           _workers_done_barrier, self._error_queue, self.macro))
+                                                           _workers_done_barrier, self._error_queue, self.macro,
+                                                           self._timing_logger))
                 ind += 1
 
         self.macro.debug("__init__ finished")
@@ -437,8 +443,12 @@ class CCScan(CSScan):
         for worker in self._data_workers:
             worker.stop()
 
-        if self.macro._timeme:
-            self._timer_worker.time_me()
+        if self.macro.timeme:
+
+                self._macro.output('Acquisition: median {:.4f} max {:.4f}'.format(np.median(self._time_timer),
+                                                                                  np.max(self._time_timer)))
+                self._macro.output('Data collecting: median {:.4f} max {:.4f}'.format(np.median(self._time_acq),
+                                                                                      np.max(self._time_acq)))
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('post-acq'):

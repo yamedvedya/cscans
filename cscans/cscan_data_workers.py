@@ -24,7 +24,7 @@ from cscan_constants import *
 
 class TimerWorker(object):
     def __init__(self, timer_name, error_queue, triggers, data_collector_trigger,
-                 workers_done_barrier, macro, motion):
+                 workers_done_barrier, macro, motion, timing_logger):
         #parameters:
         # timer_name: tango name of timer
         # error_queue: queue to report about problems
@@ -43,6 +43,7 @@ class TimerWorker(object):
         self._time_timer = []
         self._time_acq = []
         self.last_position = None
+        self._timing_logger = timing_logger
 
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
@@ -51,20 +52,19 @@ class TimerWorker(object):
             self._macro.debug('Start timer point {}'.format(self._point))
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
-            self._time_timer.append(time.time() - _start_time)
+            self._timing_logger[self._point] = {'acquisition': time.time() - _start_time}
+
             _start_time = time.time()
             for trigger in self._triggers:
                 trigger.put(self._point)
+
             position = self._motion.readPosition(force=True)
             self.last_position = position[0]
             self._data_collector_trigger.put([self._point, time.time(), position])
             self._workers_done_barrier.wait()
-            self._time_acq.append(time.time() - _start_time)
-            self._point += 1
+            self._timing_logger[self._point]['instant_data_collection'] = time.time() - _start_time
 
-    def time_me(self):
-        self._macro.output('Acquisition: median {:.4f} max {:.4f}'.format(np.median(self._time_timer), np.max(self._time_timer)))
-        self._macro.output('Data collecting: median {:.4f} max {:.4f}'.format(np.median(self._time_acq), np.max(self._time_acq)))
+            self._point += 1
 
     def stop(self):
         self._worker.stop()
@@ -81,7 +81,7 @@ class TimerWorker(object):
 # ----------------------------------------------------------------------
 
 class DataSourceWorker(object):
-    def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro):
+    def __init__(self, index, source_info, trigger, workers_done_barrier, error_queue, macro, timing_logger):
         # arguments:
         # index = worker index
         # channel_info - channels information from measurement group
@@ -95,6 +95,7 @@ class DataSourceWorker(object):
         self._trigger = trigger
         self._macro = macro
         self._workers_done_barrier = workers_done_barrier
+        self._timing_logger = timing_logger
 
         self.data_buffer = {}
         tokens = source_info.source.split('/')
@@ -123,17 +124,20 @@ class DataSourceWorker(object):
                 if self._is_counter:
                     self._counter_proxy.Reset()
                     time.sleep(COUNTER_RESET_DELAY)
+
+                self._workers_done_barrier.report()
+
                 self._macro.debug('Worker {} was triggered, point {} with data {} in buffer'.format(
                     self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
-                self._workers_done_barrier.report()
+
+
+                self._timing_logger[self._point]['instant_data_collection']
+
                 _timeit.append(time.time()-_start_time)
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
             except Exception as err:
                 self._macro.output('Error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
-
-        if self._macro._timeme:
-            self._macro.output('{:s}: median {:.4f} time: {:.4f}'.format(self.channel_label, np.median(_timeit), np.max(_timeit)))
 
     def stop(self):
         self._worker.stop()
@@ -197,7 +201,7 @@ class LambdaRoiWorker(object):
             except empty_queue:
                 time.sleep(REFRESH_PERIOD)
 
-        if self._macro._timeme:
+        if self._macro.timeme:
             self._macro.output('{:s}: median {:.4f} time: {:.4f}'.format(self.channel_label, np.median(_timeit), np.max(_timeit)))
 
     def stop(self):

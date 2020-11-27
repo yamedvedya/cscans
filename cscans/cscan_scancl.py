@@ -53,9 +53,9 @@ class scancl(Hookable):
             self._sync = True
 
         try:
-            self._timeme = self.getEnv('cscan_timeme')
+            self.timeme = self.getEnv('cscan_timeme')
         except Exception as err:
-            self._timeme = False
+            self.timeme = False
 
         self.debug('SYNC mode {}'.format(self._sync))
 
