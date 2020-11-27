@@ -248,3 +248,39 @@ class LambdaWorker(object):
 
     def stop(self):
         self._worker.stop()
+
+
+# ----------------------------------------------------------------------
+#                       Motor position
+# ----------------------------------------------------------------------
+
+
+class MotorPosition(object):
+    def __init__(self, name, trigger, motors_done_barrier, error_queue):
+        # arguments:
+        # channel_info - channels information from measurement group
+        # trigger_queue - threading queue to start measurement
+        # workers_done_barrier - barrier to restart timer
+        # error_queue - queue to report problems
+        # macro - link to marco
+
+        self._trigger = trigger
+        self._macro = macro
+        self._motors_done_barrier = motors_done_barrier
+
+        self.position = None
+
+        self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
+        self._worker.start()
+
+    def _main_loop(self):
+        _timeit = []
+        while not self._worker.stopped():
+            try:
+                index = self._trigger.get(block=False)
+                self.data_buffer['{:04d}'.format(index)] = -1
+            except empty_queue:
+                time.sleep(REFRESH_PERIOD)
+
+    def stop(self):
+        self._worker.stop()

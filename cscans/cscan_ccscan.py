@@ -39,6 +39,11 @@ class CCScan(CSScan):
         super(CCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc)
 
+        for motor in self._physical_moveables:
+            for param in dir(motor):
+                self.macro.output('{}: {}'.format(param, getattr(motor, param)))
+        raise RuntimeError('Test')
+
         # Parsing measurement group:
 
         self._has_lambda = False
@@ -76,6 +81,7 @@ class CCScan(CSScan):
         if self.macro.debug_mode:
             self.macro.debug('Starting barrier for {} workers'.format(num_counters))
         _workers_done_barrier = EndMeasurementBarrier(num_counters)
+
         self._error_queue = Queue()
         self._motor_mover = ExcThread(self.go_through_waypoints, '_motor_mover', self._error_queue)
 
