@@ -13,6 +13,7 @@ from imp import reload
 from sardana.macroserver.macro import Macro, Hookable
 from sardana.macroserver.macros.scan import getCallable, UNCONSTRAINED
 from sardana.macroserver.scan.scandata import MoveableDesc
+from sardana.taurus.core.tango.sardana.pool import StopException
 
 # cscan imports
 from cscan_ccscan import CCScan
@@ -56,8 +57,7 @@ class scancl(Hookable):
         except Exception as err:
             self._timeme = False
 
-        if debug:
-            self.output('SYNC mode {}'.format(self._sync))
+        self.debug('SYNC mode {}'.format(self._sync))
 
         if not self._sync and len(self.motors) > 1:
             options = YES_OPTIONS + NO_OPTIONS
@@ -134,7 +134,9 @@ class scancl(Hookable):
     def do_restore(self):
         if self.mode == 'dscan':
             self.output("Returning to start positions {}".format(self.original_positions))
-            self.getMotion([m.getName() for m in self.motors]).move(self.original_positions)
+            # for motor, position in zip(self._gScan._physical_moveables, self.original_positions):
+            #     motor.Position = position
+            self._gScan._physical_motion.move(self.original_positions)
 
     # ----------------------------------------------------------------------
     def _parse_motors(self, motor, start_pos, end_pos):
@@ -156,9 +158,8 @@ class scancl(Hookable):
 
                     channel_names = [device.split('/')[-1].replace('.', '/') for device in tango_motors]
 
-                    if debug:
-                        self.output('tango_motors {}'.format(tango_motors))
-                        self.output('channel_names {}'.format(channel_names))
+                    self.debug('tango_motors {}'.format(tango_motors))
+                    self.debug('channel_names {}'.format(channel_names))
 
                     _, real_start, real_finish, real_original = self._parse_dscan_pos(motor, start_pos, end_pos)
 

@@ -49,8 +49,7 @@ class HklCScan(CCScan):
             except AttributeError:
                 raise RuntimeError("{} don't have Acceleration parameter, cscans is impossible".format(motor))
 
-        if debug:
-            self.macro.output('All motors acceleration will be set to {}'.format(accel))
+        self.macro.debug('All motors acceleration will be set to {}'.format(accel))
 
         for motor in self._physical_moveables:
             motor.Acceleration = accel
@@ -83,13 +82,11 @@ class HklCScan(CCScan):
 
                 # recalculate cruise duration of motion at top velocity
                 if motor_path.duration > self._acq_duration:
-                    if debug:
-                        self.macro.output(
-                            'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
-                    else:
-                        self.macro.output(
-                            'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
-                                moveable.name))
+                    self.macro.debug(
+                        'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
+                    self.macro.output(
+                        'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
+                            moveable.name))
 
                     self._acq_duration = motor_path.duration
 
@@ -107,7 +104,7 @@ class HklCScan(CCScan):
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
 
-        self.debug("prepare_waypoint() entering...")
+        self.macro.debug("prepare_waypoint() entering...")
 
         travel_time = waypoint["integ_time"] * waypoint["npts"]
 
@@ -127,8 +124,7 @@ class HklCScan(CCScan):
         for motor, start, stop in zip(self.moveables, waypoint['start_positions'], waypoint['positions']):
             _hkl_trajectory[:, column_map[motor.name]] = np.linspace(start, stop, n_steps)
 
-        if debug:
-            self.macro.output(_hkl_trajectory)
+        self.macro.debug(_hkl_trajectory)
 
         _real_trajectory = np.zeros((n_steps, self.macro.nb_motors))
         column_map = {}
@@ -142,8 +138,7 @@ class HklCScan(CCScan):
             for _coordinate, _key in zip(_point, _point_device_keys):
                 _real_trajectory[step, column_map[_key]] = _coordinate
 
-        if debug:
-            self.macro.output('_real_trajectory: {}'.format(_real_trajectory))
+        self.macro.debug('_real_trajectory: {}'.format(_real_trajectory))
 
         raise RuntimeError('Test run')
     # ----------------------------------------------------------------------
@@ -181,15 +176,13 @@ class HklCScan(CCScan):
                 start_pos.append(path.initial_user_pos)
                 final_pos.append(path.final_user_pos)
 
-            if debug:
-                self.macro.output('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
+            self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
             if self.macro.isStopped():
                 self.on_waypoints_end()
                 return
 
             # move to start position
-            if debug:
-                self.macro.output("Moving to start position: {}".format(start_pos))
+            self.macro.debug("Moving to start position: {}".format(start_pos))
             self.motion.move(start_pos)
 
             if self.macro.isStopped():
@@ -209,8 +202,7 @@ class HklCScan(CCScan):
             self.motion_event.set()
 
             # move to waypoint end position
-            if debug:
-                self.macro.output("Moving to final position: {}".format(final_pos))
+            self.macro.debug("Moving to final position: {}".format(final_pos))
             self.motion.move(final_pos)
 
             self.motion_event.clear()

@@ -38,8 +38,7 @@ class DataCollectorWorker(object):
         self._worker.start()
         self.last_collected_point = -1
 
-        if debug:
-            self._macro.output('Data collector started')
+        self._macro.debug('Data collector started')
 
     def _data_collector_loop(self):
 
@@ -54,8 +53,7 @@ class DataCollectorWorker(object):
                 _not_reported = ''
                 self.status = 'collecting'
                 if _last_started_point > self.last_collected_point:
-                    if debug:
-                        self._macro.output("start collecting data for point {}".format(_last_started_point))
+                    self._macro.debug("start collecting data for point {}".format(_last_started_point))
                     data_line = {}
                     all_detector_reported = False
                     while not all_detector_reported and not self._worker.stopped():
@@ -68,8 +66,7 @@ class DataCollectorWorker(object):
                                 _not_reported = worker.channel_name
 
                     if not self._worker.stopped():
-                        if debug:
-                            self._macro.output("data for point {} is collected".format(_last_started_point))
+                        self._macro.debug("data for point {} is collected".format(_last_started_point))
 
                         self.last_collected_point = _last_started_point
 
@@ -89,13 +86,11 @@ class DataCollectorWorker(object):
                         self._data.addRecord(data_line)
                     else:
                         self.status = 'aborted'
-                        if debug:
-                            self._macro.output('Not reported: {}'.format(_not_reported))
-                            self._macro.output("datacollected was stopped")
+                        self._macro.debug('Not reported: {}'.format(_not_reported))
+                        self._macro.debug("datacollected was stopped")
 
         self.status = 'finished'
-        if debug:
-            self._macro.output("data collector finished")
+        self._macro.debug("data collector finished")
 
     def set_new_step_info(self, step_info):
         self._step_info = step_info

@@ -40,28 +40,31 @@ class TimerWorker(object):
         self._macro = macro
         self._motion = motion
         self._data_collector_trigger = data_collector_trigger
-        self._timeit = []
+        self._time_timer = []
+        self._time_acq = []
         self.last_position = None
 
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
     def _main_loop(self):
         while not self._worker.stopped():
-            if debug:
-                self._macro.output('Start timer point {}'.format(self._point))
+            self._macro.debug('Start timer point {}'.format(self._point))
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
-            self._timeit.append(time.time() - _start_time)
+            self._time_timer.append(time.time() - _start_time)
+            _start_time = time.time()
             for trigger in self._triggers:
                 trigger.put(self._point)
             position = self._motion.readPosition(force=True)
             self.last_position = position[0]
             self._data_collector_trigger.put([self._point, time.time(), position])
             self._workers_done_barrier.wait()
+            self._time_acq.append(time.time() - _start_time)
             self._point += 1
 
     def time_me(self):
-            self._macro.output('Mean timer time: {}'.format(np.mean(self._timeit)))
+            self._macro.output('Mean acquisition time: {}'.format(np.mean(self._time_timer)))
+            self._macro.output('Mean datacollecting time: {}'.format(np.mean(self._time_acq)))
 
     def stop(self):
         self._worker.stop()
@@ -119,9 +122,8 @@ class DataSourceWorker(object):
                 if self._is_counter:
                     self._counter_proxy.Reset()
                     time.sleep(COUNTER_RESET_DELAY)
-                if debug:
-                    self._macro.output('Worker {} was triggered, point {} with data {} in buffer'.format(
-                        self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
+                self._macro.debug('Worker {} was triggered, point {} with data {} in buffer'.format(
+                    self.channel_name, index, self.data_buffer['{:04d}'.format(index)]))
                 self._workers_done_barrier.report()
                 _timeit.append(time.time()-_start_time)
             except empty_queue:
@@ -184,9 +186,8 @@ class LambdaRoiWorker(object):
                         if self._correction_needed:
                             data *= self._attenuator_proxy.Position
                         self.data_buffer['{:04d}'.format(index)] = data
-                        if debug:
-                            self._macro.output('Lambda RoI {} was triggered, point {} with data {} in buffer'.format(
-                                                self._channel, index, self.data_buffer['{:04d}'.format(index)]))
+                        self._macro.debug('Lambda RoI {} was triggered, point {} with data {} in buffer'.format(
+                                            self._channel, index, self.data_buffer['{:04d}'.format(index)]))
                         self._workers_done_barrier.report()
                         _timeit.append(time.time()-_start_time)
                         break

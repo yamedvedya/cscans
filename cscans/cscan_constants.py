@@ -4,8 +4,6 @@ This file contains all constants, needed by cscans
 Author yury.matveev@desy.de
 '''
 
-debug = False
-
 TIMEOUT = 1
 TIMEOUT_LAMBDA = 1
 REFRESH_PERIOD = 5e-4

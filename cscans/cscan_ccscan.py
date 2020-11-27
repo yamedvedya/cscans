@@ -48,6 +48,8 @@ class CCScan(CSScan):
         self._position_start = None
         self._position_stop = None
 
+        self._scan_in_process = False
+
         num_counters = 0
         _worker_triggers = []
         _lambda_settled = False
@@ -65,8 +67,7 @@ class CCScan(CSScan):
         # DataWorkers array
         self._data_workers = []
 
-        if debug:
-            self.macro.output('Starting barrier for {} workers'.format(num_counters))
+        self.macro.debug('Starting barrier for {} workers'.format(num_counters))
         _workers_done_barrier = EndMeasurementBarrier(num_counters)
         self._error_queue = Queue()
         self._motor_mover = ExcThread(self.go_through_waypoints, '_motor_mover', self._error_queue)
@@ -100,8 +101,7 @@ class CCScan(CSScan):
                                                            _workers_done_barrier, self._error_queue, self.macro))
                 ind += 1
 
-        if debug:
-            self.macro.output("__init__ finished")
+        self.macro.debug("__init__ finished")
 
     # ----------------------------------------------------------------------
     def _setup_lambda(self, integ_time):
@@ -131,8 +131,7 @@ class CCScan(CSScan):
             self.macro.output(_lambda_proxy.State())
             raise RuntimeError('Cannot start LAMBDA')
 
-        if debug:
-            self.macro.output('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
+        self.macro.debug('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
 
         _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
         if _lambdaonlineanalysis_proxy.State() == PyTango.DevState.MOVING:
@@ -143,8 +142,7 @@ class CCScan(CSScan):
         if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.MOVING:
                 raise RuntimeError('Cannot start LambdaOnlineAnalysis')
 
-        if debug:
-            self.macro.output('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
+        self.macro.debug('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
 
      # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint, iterate_only=False):
@@ -152,7 +150,7 @@ class CCScan(CSScan):
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
 
-        self.debug("prepare_waypoint() entering...")
+        self.macro.debug("prepare_waypoint() entering...")
 
         travel_time = waypoint["integ_time"] * waypoint["npts"]
 
@@ -186,11 +184,9 @@ class CCScan(CSScan):
 
             # recalculate cruise duration of motion at top velocity
             if motor_path.duration > self._acq_duration:
-                if debug:
-                    self.macro.output(
+                self.macro.debug(
                         'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
-                else:
-                    self.macro.output(
+                self.macro.output(
                         'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
                             moveable.name))
 
@@ -311,15 +307,13 @@ class CCScan(CSScan):
                 start_pos.append(path.initial_user_pos)
                 final_pos.append(path.final_user_pos)
 
-            if debug:
-                self.macro.output('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
+            self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
             if self.macro.isStopped():
                 self.on_waypoints_end()
                 return
 
             # move to start position
-            if debug:
-                self.macro.output("Moving to start position: {}".format(start_pos))
+            self.macro.debug("Moving to start position: {}".format(start_pos))
             self.motion.move(start_pos)
 
             if self.macro.isStopped():
@@ -339,8 +333,7 @@ class CCScan(CSScan):
             self.motion_event.set()
 
             # move to waypoint end position
-            if debug:
-                self.macro.output("Moving to final position: {}".format(final_pos))
+            self.macro.debug("Moving to final position: {}".format(final_pos))
             self.motion.move(final_pos)
 
             self.motion_event.clear()
@@ -357,8 +350,9 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def scan_loop(self):
 
-        if debug:
-            self.macro.output("scan loop() entering...")
+        self.macro.debug("scan loop() entering...")
+
+        self._scan_in_process = True
 
         macro = self.macro
         # manager = macro.getManager()
@@ -380,14 +374,12 @@ class CCScan(CSScan):
 
         while not self._all_waypoints_finished:
 
-            if debug:
-                self.macro.output("waiting for motion event")
+            self.macro.debug("waiting for motion event")
             # wait for motor to reach start position
             motion_event.wait()
 
             # wait for motor to reach max velocity
-            if debug:
-                self.macro.output("wait for motors to pass start point")
+            self.macro.debug("wait for motors to pass start point")
 
             while self._motion.readPosition(force=True)[0] < self._position_start:
                 time.sleep(REFRESH_PERIOD)
@@ -407,43 +399,46 @@ class CCScan(CSScan):
                 except empty_queue:
                     pass
                 else:
-                    if debug:
-                        self.macro.output('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
+                    self.macro.debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
                     self._timer_worker.stop()
                     break
 
-                # If there is no more time to acquire... stop!
-                elapsed_time = time.time() - acq_start_time
-                if elapsed_time > self._acq_duration + self._integration_time:
-                    if debug:
-                        self.macro.output("Stopping all workers")
-                    # motion_event.clear()
-                    self._timer_worker.stop()
-                    break
+                # # If there is no more time to acquire... stop!
+                # elapsed_time = time.time() - acq_start_time
+                # if elapsed_time > self._acq_duration + self._integration_time:
+                #     self.macro.debug("Stopping all workers")
+                #     # motion_event.clear()
+                #     self._timer_worker.stop()
+                #     break
 
-            self._timer_worker.stop()
+            self._finish_scan()
 
-            if debug:
-                self.macro.output("waiting for motion end")
-            self.motion_end_event.wait()
+            if scream:
+                yield 100.0
 
-            if debug:
-                self.macro.output("waiting for data collector finishes")
+    # ----------------------------------------------------------------------
+    def _finish_scan(self):
 
-            _timeout_start_time = time.time()
-            while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status == 'collecting':
-                time.sleep(self._integration_time)
+        self._timer_worker.stop()
 
-            if self._data_collector.status == 'collecting':
-                if debug:
-                    self.macro.output('Killing DataCollector')
-                self._data_collector.stop()
+        self.macro.debug("waiting for motion end")
+        self.motion_end_event.wait()
 
-            for worker in self._data_workers:
-                worker.stop()
+        self.macro.debug("waiting for data collector finishes")
 
-            if self.macro._timeme:
-                self._timer_worker.time_me()
+        _timeout_start_time = time.time()
+        while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status == 'collecting':
+            time.sleep(self._integration_time)
+
+        if self._data_collector.status == 'collecting':
+            self.macro.debug('Killing DataCollector')
+            self._data_collector.stop()
+
+        for worker in self._data_workers:
+            worker.stop()
+
+        if self.macro._timeme:
+            self._timer_worker.time_me()
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('post-acq'):
@@ -455,24 +450,22 @@ class CCScan(CSScan):
         env['acqtime'] = self._data_collector.last_collected_point*self._integration_time
         env['delaytime'] = time.time() - env['acqtime']
 
-        if debug:
-            self.macro.output("scan loop finished")
+        self.macro.debug("scan loop finished")
 
-        if not scream:
-            yield 100.0
+        self._scan_in_process = False
 
     # ----------------------------------------------------------------------
     def do_restore(self):
-        if debug:
-            self.macro.output('Stopping motion')
+        if self._scan_in_process:
+            self._finish_scan()
+
+        self.macro.debug('Stopping motion')
         self.motion.stop()
-        if debug:
-            self.macro.output('Resetting motors')
+        self.macro.debug('Resetting motors')
         self._restore_motors()
 
         if self._has_lambda:
-            if debug:
-                self.macro.output('Stopping LambdaOnlineAnalysis')
+            self.macro.debug('Stopping LambdaOnlineAnalysis')
             _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
             _lambdaonlineanalysis_proxy.StopAnalysis()
             time.sleep(0.1)
@@ -484,8 +477,7 @@ class CCScan(CSScan):
             if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
                 self.macro.output('Cannot stop LambdaOnlineAnalysis!')
 
-            if debug:
-                self.macro.output('Stopping LambdaOnlineAnalysis')
+            self.macro.debug('Stopping Lambda')
 
             _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
             _lambda_proxy.StopAcq()
