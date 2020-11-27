@@ -51,8 +51,10 @@ class CCScan(CSScan):
 
         self._integration_time = None
         self._acq_duration = None
+
         self._position_start = None
         self._position_stop = None
+        self._movement_direction = None
 
         self._timing_logger = OrderedDict()
         self._timing_logger['Acquisition'] = []
@@ -282,6 +284,7 @@ class CCScan(CSScan):
 
         self._position_start = waypoint['start_positions'][0]
         self._position_stop = waypoint['positions'][0]
+        self._movement_direction = calculated_paths[0].positive_displacement
 
         return calculated_paths
 
@@ -411,15 +414,19 @@ class CCScan(CSScan):
             if self.macro.debug_mode:
                 self.macro.debug("wait for motors to pass start point")
 
-            while self._motion.readPosition(force=True)[0] < self._position_start:
-                time.sleep(REFRESH_PERIOD)
+            if self._movement_direction:
+                while self._motion.readPosition(force=True)[0] < self._position_start:
+                    time.sleep(REFRESH_PERIOD)
+            else:
+                while self._motion.readPosition(force=True)[0] > self._position_start:
+                    time.sleep(REFRESH_PERIOD)
 
             acq_start_time = time.time()
             self._data_collector.set_acq_start_time(acq_start_time)
             self._timer_worker.start()
-
+            _finished = False
             #after first point generate triggers every integ_time
-            while motion_event.is_set() and self._timer_worker.last_position < self._position_stop:
+            while motion_event.is_set() and not _finished:
 
                 # allow scan to stop
                 macro.checkPoint()
@@ -433,6 +440,11 @@ class CCScan(CSScan):
                         self.macro.debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
                     self._timer_worker.stop()
                     break
+
+                if self._movement_direction:
+                    _finished = self._timer_worker.last_position > self._position_stop
+                else:
+                    _finished = self._timer_worker.last_position < self._position_stop
 
                 # # If there is no more time to acquire... stop!
                 # elapsed_time = time.time() - acq_start_time
@@ -528,6 +540,7 @@ class CCScan(CSScan):
 
             if _lambda_proxy.State() == PyTango.DevState.ON:
                 _lambda_proxy.FrameNumbers = 1
+                _lambda_proxy.TriggerMode = 0
             else:
                 self.macro.output('Cannot reset Lambda! Check the settings.')
 
