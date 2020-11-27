@@ -6,7 +6,7 @@ Author yury.matveev@desy.de
 
 TIMEOUT = 1
 TIMEOUT_LAMBDA = 1
-REFRESH_PERIOD = 5e-4
+REFRESH_PERIOD = 1e-4
 
 DUMMY_MOTOR = 'exp_dmy01'
 

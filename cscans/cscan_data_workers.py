@@ -54,10 +54,10 @@ class TimerWorker(object):
     def _main_loop(self):
         while not self._worker.stopped():
 
+            _start_time = time.time()
             if self._macro.debug_mode:
                 self._macro.debug('Start timer point {}'.format(self._point))
 
-            _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
             self._timing_logger['Acquisition'].append(time.time() - _start_time)
 
@@ -67,12 +67,13 @@ class TimerWorker(object):
             self.last_position = position[0]
             self._timing_logger['Position_measurement'].append(time.time() - _start_time)
 
-            _start_time = time.time()
+            _start_time2 = time.time()
             self._data_collector_trigger.put([self._point, time.time(), position])
             for trigger in self._triggers:
                 trigger.put(self._point)
             self._workers_done_barrier.wait()
-            self._timing_logger['Data_collection'].append(time.time() - _start_time)
+            self._timing_logger['Data_collection'].append(time.time() - _start_time2)
+            self._timing_logger['Point_dead_time'].append(time.time() - _start_time)
 
             self._point += 1
 
@@ -292,14 +293,20 @@ class MotorPosition(object):
     def __init__(self, motor, trigger, motors_reported_barrier, error_queue):
 
         self._trigger = trigger
-        self._device_proxy = PyTango.DeviceProxy(motor.TangoDevice)
+        try:
+            self._device_proxy = PyTango.DeviceProxy(motor.TangoDevice)
+            name = self._device_proxy.name()
+        except:
+            self._device_proxy = motor
+            name = self._device_proxy.name
+
         self._motors_reported_barrier = motors_reported_barrier
 
         self.position = None
 
         self.state = 'idle'
 
-        self._worker = ExcThread(self._main_loop, self._device_proxy.name(), error_queue)
+        self._worker = ExcThread(self._main_loop, name, error_queue)
         self._worker.start()
 
     def _main_loop(self):

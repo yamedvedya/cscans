@@ -57,10 +57,14 @@ class CCScan(CSScan):
         self._position_start = None
         self._position_stop = None
         self._movement_direction = None
-        self._main_motor = PyTango.DeviceProxy(self._physical_moveables[0].TangoDevice)
+        try:
+            self._main_motor = PyTango.DeviceProxy(self._physical_moveables[0].TangoDevice)
+        except:
+            self._main_motor = self._physical_moveables[0]
 
         self._timing_logger = OrderedDict()
         self._timing_logger['Acquisition'] = []
+        self._timing_logger['Point_dead_time'] = []
         self._timing_logger['Data_collection'] = []
         self._timing_logger['Position_measurement'] = []
 
@@ -178,7 +182,7 @@ class CCScan(CSScan):
         if self.macro.debug_mode:
             self.macro.debug("prepare_waypoint() entering...")
 
-        travel_time = waypoint["integ_time"] * waypoint["npts"]
+        travel_time = waypoint["integ_time"] * waypoint["npts"] * 1.1
 
         original_duration, self._acq_duration, overhead_time = travel_time, travel_time, 0
         calculated_paths = []
