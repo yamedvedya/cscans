@@ -6,6 +6,7 @@ Author yury.matveev@desy.de
 
 # general python imports
 import time
+import os
 import PyTango
 import numpy as np
 from collections import OrderedDict
@@ -39,10 +40,11 @@ class CCScan(CSScan):
         super(CCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc)
 
-        for motor in self._physical_moveables:
-            for param in dir(motor):
-                self.macro.output('{}: {}'.format(param, getattr(motor, param)))
-        raise RuntimeError('Test')
+        # for motor in self._physical_moveables:
+        #     for param in dir(motor):
+        #         self.macro.output('{}: {}'.format(param, getattr(motor, param)))
+
+        # raise RuntimeError('Test')
 
         # Parsing measurement group:
 
@@ -55,6 +57,7 @@ class CCScan(CSScan):
         self._position_start = None
         self._position_stop = None
         self._movement_direction = None
+        self._main_motor = PyTango.DeviceProxy(self._physical_moveables[0].TangoDevice)
 
         self._timing_logger = OrderedDict()
         self._timing_logger['Acquisition'] = []
@@ -99,16 +102,15 @@ class CCScan(CSScan):
             if 'eh_t' in channel_info.label:
                 self._timer_worker = TimerWorker(timer_names[channel_info.label], self._error_queue,
                                                  _worker_triggers, _data_collector_trigger, _workers_done_barrier,
-                                                 self.macro, self.motion, self._timing_logger)
+                                                 self.macro, self._physical_moveables, self._timing_logger)
             if 'lmbd' in channel_info.label:
                 if 'lmbd_countsroi' in channel_info.label:
                     self._timing_logger[channel_info.label] = []
                     self._data_workers.append(LambdaRoiWorker(ind, channel_info, _worker_triggers[ind],
-                                                               _workers_done_barrier, self._error_queue,
-                                                              self.macro, self._timing_logger))
+                                                               self._error_queue, self.macro, self._timing_logger))
                     ind += 1
                 elif channel_info.label == 'lmbd':
-                    self._data_workers.append(LambdaWorker(channel_info, _worker_triggers[ind],
+                    self._data_workers.append(LambdaWorker(ind, channel_info, _worker_triggers[ind],
                                                            _workers_done_barrier, self._error_queue,
                                                            self.macro))
                     ind += 1
@@ -415,10 +417,10 @@ class CCScan(CSScan):
                 self.macro.debug("wait for motors to pass start point")
 
             if self._movement_direction:
-                while self._motion.readPosition(force=True)[0] < self._position_start:
+                while self._main_motor.Position < self._position_start:
                     time.sleep(REFRESH_PERIOD)
             else:
-                while self._motion.readPosition(force=True)[0] > self._position_start:
+                while self._main_motor.Position > self._position_start:
                     time.sleep(REFRESH_PERIOD)
 
             acq_start_time = time.time()
@@ -499,8 +501,18 @@ class CCScan(CSScan):
         self._scan_in_process = False
 
         if self.macro.timeme:
+            data_to_save = np.arange(self._data_collector.last_collected_point)
+            header = 'Point;'
             for name, values in self._timing_logger.items():
                 self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
+                data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
+                header += name + ';'
+
+            file_name = os.path.join(self._macro.getEnv('ScanDir'), os.path.splitext(self._macro.getEnv('ScanFile'))[0]
+                                     + str(self._macro.getEnv('ScanID')) + '.tlog')
+
+            data_to_save = np.transpose(data_to_save)
+            np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
 
     # ----------------------------------------------------------------------
     def do_restore(self):
