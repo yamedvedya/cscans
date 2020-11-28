@@ -20,7 +20,8 @@ from sardana.macroserver.macro import macro
 from sardana.macroserver.scan import CSScan
 from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
-from sardana.macroserver.scan.gscan import ScanException
+from sardana.macroserver.scan.gscan import ScanException, ScanEndStatus
+from sardana.macroserver.msexception import StopException, AbortException
 
 # cscan imports, always reloaded to track changes
 
@@ -387,6 +388,26 @@ class CCScan(CSScan):
 
     # ----------------------------------------------------------------------
     def scan_loop(self):
+        self.start()
+        try:
+            self._run_scan()
+            self._finish_scan()
+            endstatus = ScanEndStatus.Normal
+        except StopException as err:
+            endstatus = ScanEndStatus.Stop
+        except AbortException as err:
+            endstatus = ScanEndStatus.Abort
+        except Exception as err:
+            endstatus = ScanEndStatus.Exception
+        finally:
+            self._env["endstatus"] = endstatus
+            self.end()
+            self.do_restore()
+            if endstatus != ScanEndStatus.Normal:
+                raise err
+
+    # ----------------------------------------------------------------------
+    def _run_scan(self):
 
         if self.macro.debug_mode:
             self.macro.debug("scan loop() entering...")
@@ -452,10 +473,6 @@ class CCScan(CSScan):
                     _finished = self._timer_worker.last_position > self._position_stop
                 else:
                     _finished = self._timer_worker.last_position < self._position_stop
-
-            self._finish_scan()
-
-            yield 100.0
 
     # ----------------------------------------------------------------------
     def _finish_scan(self):

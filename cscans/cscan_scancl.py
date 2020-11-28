@@ -243,8 +243,7 @@ class aNcscan(Macro, scancl):
 
     def run(self, *args):
         if self.do_scan:
-            for step in self._gScan.step_scan():
-                yield step
+            self._gScan.scan_loop()
 
     def getCommand(self):
         return self._get_command('a')
