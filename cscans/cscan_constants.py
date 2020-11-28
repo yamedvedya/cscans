@@ -21,3 +21,5 @@ HKL_GRID_RESOLUTION = 0.0005
 counter_names = {'sis3820': 'p23/counter/eh'}
 timer_names = {'eh_t01': 'p23/dgg2/eh.01',
                'eh_t02': 'p23/dgg2/eh.02'}
+
+MOTORS_POSITION = 'series' # 'sync' or 'series'

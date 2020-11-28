@@ -260,16 +260,25 @@ class MovingGroupPosition(object):
 
         self._macro = macro
 
-        self._motors_reported_barrier = EndMeasurementBarrier(len(motors_list))
-        self._motor_triggers = [Queue() for _ in motors_list]
-        self._devices = [MotorPosition(motor, trigger, self._motors_reported_barrier, error_queue)
-                         for motor, trigger in zip(motors_list, self._motor_triggers)]
+        if MOTORS_POSITION == 'sync':
+            self._motors_reported_barrier = EndMeasurementBarrier(len(motors_list))
+            self._motor_triggers = [Queue() for _ in motors_list]
+            self._devices = [MotorPosition(motor, trigger, self._motors_reported_barrier, error_queue)
+                             for motor, trigger in zip(motors_list, self._motor_triggers)]
+        else:
+            self._devices = []
+            for motor in motors_list:
+                try:
+                    self._devices.append(PyTango.DeviceProxy(motor.TangoDevice))
+                except:
+                    self._devices.append(motor)
 
     # ----------------------------------------------------------------------
     def get_motors_position(self):
-        for ind, trigger in enumerate(self._motor_triggers):
-            trigger.put(ind)
-        self._motors_reported_barrier.wait()
+        if MOTORS_POSITION == 'sync':
+            for ind, trigger in enumerate(self._motor_triggers):
+                trigger.put(ind)
+            self._motors_reported_barrier.wait()
 
         return [device.position for device in self._devices]
 
@@ -309,6 +318,7 @@ class MotorPosition(object):
         self._worker = ExcThread(self._main_loop, name, error_queue)
         self._worker.start()
 
+    # ----------------------------------------------------------------------
     def _main_loop(self):
         self.state = 'running'
         while not self._worker.stopped():
@@ -321,5 +331,6 @@ class MotorPosition(object):
 
         self.state = 'stopped'
 
+    # ----------------------------------------------------------------------
     def stop(self):
         self._worker.stop()

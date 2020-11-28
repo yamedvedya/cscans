@@ -67,7 +67,7 @@ class DataCollectorWorker(object):
                                 all_detector_reported *= False
                                 _not_reported = worker.channel_name
 
-                    if not self._worker.stopped():
+                    if all_detector_reported:
                         if self._macro.debug_mode:
                             self._macro.debug("data for point {} is collected".format(_last_started_point))
 
@@ -88,7 +88,6 @@ class DataCollectorWorker(object):
 
                         self._data.addRecord(data_line)
                     else:
-                        self.status = 'aborted'
                         if self._macro.debug_mode:
                             self._macro.debug('Not reported: {}'.format(_not_reported))
                             self._macro.debug("datacollected was stopped")

@@ -239,6 +239,10 @@ class CCScan(CSScan):
                 new_top_vel = path.displacement / self._acq_duration
                 vmotor.setMaxVelocity(new_top_vel)
 
+                self.macro.output('The speed of {} motor will be changed from {} to {}'.format(motor,
+                                                                                               old_top_velocity,
+                                                                                               new_top_vel))
+
                 try:
                     accel_time = motor.getAcceleration() * new_top_vel / old_top_velocity # to keep acceleration in steps
                     vmotor.setAccelerationTime(accel_time)
@@ -278,13 +282,9 @@ class CCScan(CSScan):
                 path.setFinalUserPos(original_stop)
 
         for path in calculated_paths:
-            self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(motor,
+            self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(path.physical_motor,
                                                                                               path.initial_user_pos,
                                                                                               path.final_user_pos))
-
-            self.macro.output('The speed of {} motor will be changed from {} to {}'.format(motor,
-                                                                                           old_top_velocity,
-                                                                                           new_top_vel))
 
         self._integration_time_correction = self._acq_duration/original_duration
 
@@ -465,17 +465,14 @@ class CCScan(CSScan):
         if self.macro.debug_mode:
             self.macro.debug("waiting for data collector finishes")
 
+        self._data_collector.stop()
         _timeout_start_time = time.time()
-        while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status == 'collecting':
+        while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status != 'finished':
             time.sleep(self._integration_time)
 
-        if self._data_collector.status == 'collecting':
+        if self._data_collector.status != 'finished':
             if self.macro.debug_mode:
-                self.macro.debug('Killing DataCollector')
-            self._data_collector.stop()
-        else:
-            if self.macro.debug_mode:
-                self.macro.debug('DataCollector stopped regularly')
+                self.macro.debug("Cannot stop DataCollector, status: {}".format(self._data_collector.status))
 
         for worker in self._data_workers:
             worker.stop()

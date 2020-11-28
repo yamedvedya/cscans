@@ -59,6 +59,8 @@ class scancl(Hookable):
 
         try:
             self.debug_mode = self.getEnv('cscan_debug')
+            if self.debug_mode:
+                self.output('ATTENTION! cscan_debug set to True!!! If you are not debuging now it is recommended to set it to False!!!!!')
         except Exception as err:
             self.debug_mode = False
 
