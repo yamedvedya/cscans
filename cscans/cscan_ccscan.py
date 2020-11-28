@@ -473,6 +473,9 @@ class CCScan(CSScan):
             if self.macro.debug_mode:
                 self.macro.debug('Killing DataCollector')
             self._data_collector.stop()
+        else:
+            if self.macro.debug_mode:
+                self.macro.debug('DataCollector stopped regularly')
 
         for worker in self._data_workers:
             worker.stop()
@@ -508,6 +511,9 @@ class CCScan(CSScan):
 
             data_to_save = np.transpose(data_to_save)
             np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
+
+        if self.macro.debug_mode:
+            self.macro.debug("_finish_scan() done")
 
     # ----------------------------------------------------------------------
     def do_restore(self):
