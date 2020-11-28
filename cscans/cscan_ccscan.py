@@ -453,18 +453,9 @@ class CCScan(CSScan):
                 else:
                     _finished = self._timer_worker.last_position < self._position_stop
 
-                # # If there is no more time to acquire... stop!
-                # elapsed_time = time.time() - acq_start_time
-                # if elapsed_time > self._acq_duration + self._integration_time:
-                #     self.macro.debug("Stopping all workers")
-                #     # motion_event.clear()
-                #     self._timer_worker.stop()
-                #     break
-
             self._finish_scan()
 
-            if scream:
-                yield 100.0
+            yield 100.0
 
     # ----------------------------------------------------------------------
     def _finish_scan(self):
@@ -512,8 +503,8 @@ class CCScan(CSScan):
                 except:
                     pass
 
-            file_name = os.path.join(self._macro.getEnv('ScanDir'), os.path.splitext(self._macro.getEnv('ScanFile'))[0]
-                                     + str(self._macro.getEnv('ScanID')) + '.tlog')
+            file_name = os.path.join(self._macro.getEnv('ScanDir'),
+                                     'time_log_' + str(self._macro.getEnv('ScanID')) + '.tlog')
 
             data_to_save = np.transpose(data_to_save)
             np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
