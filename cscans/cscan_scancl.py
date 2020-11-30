@@ -48,6 +48,9 @@ class scancl(Hookable):
         self.nsteps = nb_steps
         self.integ_time = integ_time
 
+        self._step_info = {"start_positions": self.start_pos, "positions": self.final_pos,
+               "integ_time": self.integ_time, "npts": self.nsteps}
+
         try:
             self._sync = self.getEnv('cscan_sync')
         except Exception as err:
@@ -61,7 +64,7 @@ class scancl(Hookable):
         try:
             self.debug_mode = self.getEnv('cscan_debug')
             if self.debug_mode:
-                self.output('ATTENTION! cscan_debug set to True!!! If you are not debuging now it is recommended to set it to False!!!!!')
+                self.warning('ATTENTION! cscan_debug set to True!!! If you are not debuging now it is recommended to set it to False!!!!!')
         except Exception as err:
             self.debug_mode = False
 
@@ -125,9 +128,7 @@ class scancl(Hookable):
     # ----------------------------------------------------------------------
     def _waypoint_generator(self):
         # returns start and further points points. Note that we pass the desired travel time
-        yield {"start_positions": self.start_pos, "positions": self.final_pos,
-               "integ_time": self.integ_time, "npts": self.nsteps}
-
+        yield self._step_info
 
     # ----------------------------------------------------------------------
     def _period_generator(self):
@@ -241,6 +242,8 @@ class scancl(Hookable):
 class aNcscan(iMacro, scancl):
 
     def run(self, *args):
+        self._gScan.prepare_waypoint(self._step_info)
+
         if self.do_scan:
             for step in self._gScan.step_scan():
                 yield step

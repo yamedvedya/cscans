@@ -62,7 +62,7 @@ class TimerWorker(object):
                 self._macro.debug('Start timer point {}'.format(self._point))
 
             self._device_proxy.StartAndWaitForTimer()
-            self._timing_logger['Acquisition'].append(time.time() - _start_time)
+            self._timing_logger['Timer'].append(time.time() - _start_time)
 
             _start_time = time.time()
             # position = [device.Position for device in self._motors_devices]

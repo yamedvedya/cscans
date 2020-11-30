@@ -53,6 +53,7 @@ class CCScan(CSScan):
         self._position_start = None
         self._position_stop = None
         self._movement_direction = None
+        self._motion_paths = []
 
         try:
             self._main_motor = PyTango.DeviceProxy(self._physical_moveables[0].TangoDevice)
@@ -60,8 +61,8 @@ class CCScan(CSScan):
             self._main_motor = self._physical_moveables[0]
 
         self._timing_logger = OrderedDict()
-        self._timing_logger['Acquisition'] = []
         self._timing_logger['Point_dead_time'] = []
+        self._timing_logger['Timer'] = []
         self._timing_logger['Data_collection'] = []
         self._timing_logger['Position_measurement'] = []
 
@@ -170,7 +171,7 @@ class CCScan(CSScan):
             self.macro.debug('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
 
      # ----------------------------------------------------------------------
-    def prepare_waypoint(self, waypoint, iterate_only=False):
+    def prepare_waypoint(self, waypoint):
         ### This function basically repeats the original, The only difference is that "slow_down" factor changed
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
@@ -181,7 +182,6 @@ class CCScan(CSScan):
         travel_time = waypoint["integ_time"] * waypoint["npts"] * 1.1
 
         original_duration, self._acq_duration, overhead_time = travel_time, travel_time, 0
-        calculated_paths = []
 
         _can_be_synchro = True
         for moveable, start_position, final_position in zip(self.moveables, waypoint['start_positions'], waypoint['positions']):
@@ -213,19 +213,19 @@ class CCScan(CSScan):
                 if self.macro.debug_mode:
                     self.macro.debug(
                         'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
-                self.macro.output(
+                self.macro.warning(
                         'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
                             moveable.name))
 
                 self._acq_duration = motor_path.duration
 
-            calculated_paths.append(motor_path)
+            self._motion_paths.append(motor_path)
 
         # now that we have the appropriate top velocity for all motors, the
         # cruise duration of motion at top velocity, and the time it takes to
         # recalculate
         _reset_positions = False
-        for path in calculated_paths:
+        for path in self._motion_paths:
             vmotor = path.motor
             # in the case of pseudo motors or not moving a motor...
             if path.displacement != 0:
@@ -255,7 +255,7 @@ class CCScan(CSScan):
                                                                                                    old_decel,
                                                                                                    decel_time))
 
-                    if not iterate_only and not _can_be_synchro:
+                    if not _can_be_synchro:
                         self.macro.warning("{} motion will not be coordinated".format(motor))
                         self.macro._sync = False
 
@@ -280,23 +280,27 @@ class CCScan(CSScan):
                         _reset_positions = True
 
         if _reset_positions:
-            for path, original_start, original_stop in zip(calculated_paths, waypoint['start_positions'],
+            for path, original_start, original_stop in zip(self._motion_paths, waypoint['start_positions'],
                                                            waypoint['positions']):
                 path.setInitialUserPos(original_start)
                 path.setFinalUserPos(original_stop)
 
-        for path in calculated_paths:
+        for path in self._motion_paths:
             self.macro.output('Calculated positions for motor {}: start: {}, stop: {}'.format(path.physical_motor,
                                                                                               path.initial_user_pos,
                                                                                               path.final_user_pos))
 
-        self._integration_time_correction = self._acq_duration/original_duration
+        _integration_time_correction = self._acq_duration/original_duration
+        self._integration_time = waypoint["integ_time"] * _integration_time_correction
+        if _integration_time_correction > 1:
+            self.macro.warning(
+                'Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
 
         self._position_start = waypoint['start_positions'][0]
         self._position_stop = waypoint['positions'][0]
-        self._movement_direction = calculated_paths[0].positive_displacement
+        self._movement_direction = self._motion_paths[0].positive_displacement
 
-        return calculated_paths
+        return self._motion_paths
 
     # ----------------------------------------------------------------------
     def _check_motor_limits(self, motor, destination):
@@ -322,14 +326,9 @@ class CCScan(CSScan):
 
         for _, waypoint in self.steps:
 
-            motion_paths = self.prepare_waypoint(waypoint)
-
             # get integ_time for this loop
             _, step_info = self.period_steps.next()
             self._data_collector.set_new_step_info(step_info)
-            self._integration_time = step_info['integ_time'] * self._integration_time_correction
-            if self._integration_time_correction > 1:
-                self.macro.output('Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
             self._timer_worker.set_new_period(self._integration_time)
 
             if self._has_lambda:
@@ -340,7 +339,7 @@ class CCScan(CSScan):
                 hook()
 
             start_pos, final_pos = [], []
-            for path in motion_paths:
+            for path in self._motion_paths:
                 start_pos.append(path.initial_user_pos)
                 final_pos.append(path.final_user_pos)
 
@@ -358,7 +357,7 @@ class CCScan(CSScan):
                 return
 
             # prepare motor(s) with the velocity required for synchronization
-            for path in motion_paths:
+            for path in self._motion_paths:
                 path.physical_motor.setVelocity(path.motor.getMaxVelocity())
                 path.physical_motor.setAcceleration(path.motor.getAccelerationTime())
                 path.physical_motor.setDeceleration(path.motor.getDecelerationTime())
@@ -490,8 +489,11 @@ class CCScan(CSScan):
             data_to_save = np.arange(self._data_collector.last_collected_point)
             header = 'Point;'
             for name, values in self._timing_logger.items():
-                self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
                 try:
+                    if name == 'Point_dead_time':
+                        self._macro.warning('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
+                    else:
+                        self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
                     data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
                     header += name + ';'
                 except:
