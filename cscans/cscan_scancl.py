@@ -10,10 +10,9 @@ from imp import reload
 
 # Sardana imports
 
-from sardana.macroserver.macro import Macro, Hookable
+from sardana.macroserver.macro import iMacro, Hookable
 from sardana.macroserver.macros.scan import getCallable, UNCONSTRAINED
 from sardana.macroserver.scan.scandata import MoveableDesc
-from sardana.taurus.core.tango.sardana.pool import StopException
 
 # cscan imports
 from cscan_ccscan import CCScan
@@ -237,7 +236,7 @@ class scancl(Hookable):
         return command
 
 # ----------------------------------------------------------------------
-class aNcscan(Macro, scancl):
+class aNcscan(iMacro, scancl):
 
     def run(self, *args):
         if self.do_scan:
