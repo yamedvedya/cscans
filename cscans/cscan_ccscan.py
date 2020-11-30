@@ -245,12 +245,20 @@ class CCScan(CSScan):
                                                                                                new_top_vel))
 
                 try:
-                    accel_time = motor.getAcceleration() * new_top_vel / old_top_velocity # to keep acceleration in steps
+                    old_accel = motor.getAcceleration()
+                    accel_time =  old_accel* new_top_vel / old_top_velocity # to keep acceleration in steps
+                    self.macro.output('The acceleration of {} motor will be changed from {} to {}'.format(motor,
+                                                                                                   old_accel,
+                                                                                                   accel_time))
                     vmotor.setAccelerationTime(accel_time)
                     overhead_time = max(overhead_time, accel_time)
 
-                    decel_time = motor.getDeceleration() * new_top_vel / old_top_velocity # to keep acceleration in steps
+                    old_decel = motor.getDeceleration()
+                    decel_time = old_decel * new_top_vel / old_top_velocity # to keep acceleration in steps
                     vmotor.setDecelerationTime(decel_time)
+                    self.macro.output('The deceleration of {} motor will be changed from {} to {}'.format(motor,
+                                                                                                   old_decel,
+                                                                                                   decel_time))
 
                     if not iterate_only and not _can_be_synchro:
                         self.macro.warning("{} motion will not be coordinated".format(motor))
@@ -388,26 +396,6 @@ class CCScan(CSScan):
 
     # ----------------------------------------------------------------------
     def scan_loop(self):
-        self.start()
-        try:
-            self._run_scan()
-            self._finish_scan()
-            endstatus = ScanEndStatus.Normal
-        except StopException as err:
-            endstatus = ScanEndStatus.Stop
-        except AbortException as err:
-            endstatus = ScanEndStatus.Abort
-        except Exception as err:
-            endstatus = ScanEndStatus.Exception
-        finally:
-            self._env["endstatus"] = endstatus
-            self.end()
-            self.do_restore()
-            if endstatus != ScanEndStatus.Normal:
-                raise err
-
-    # ----------------------------------------------------------------------
-    def _run_scan(self):
 
         if self.macro.debug_mode:
             self.macro.debug("scan loop() entering...")
@@ -467,12 +455,16 @@ class CCScan(CSScan):
                     if self.macro.debug_mode:
                         self.macro.debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
                     self._timer_worker.stop()
-                    break
+                    _finished = True
 
                 if self._movement_direction:
                     _finished = self._timer_worker.last_position > self._position_stop
                 else:
                     _finished = self._timer_worker.last_position < self._position_stop
+
+        self._finish_scan()
+
+        yield 1
 
     # ----------------------------------------------------------------------
     def _finish_scan(self):

@@ -4,8 +4,8 @@ This file contains all constants, needed by cscans
 Author yury.matveev@desy.de
 '''
 
-TIMEOUT = 1
-TIMEOUT_LAMBDA = 1
+TIMEOUT = 3
+TIMEOUT_LAMBDA = 3
 REFRESH_PERIOD = 1e-4
 
 DUMMY_MOTOR = 'exp_dmy01'

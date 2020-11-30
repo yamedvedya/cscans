@@ -142,8 +142,6 @@ class scancl(Hookable):
     def do_restore(self):
         if self.mode == 'dscan':
             self.output("Returning to start positions {}".format(self.original_positions))
-            # for motor, position in zip(self._gScan._physical_moveables, self.original_positions):
-            #     motor.Position = position
             self._gScan._physical_motion.move(self.original_positions)
 
     # ----------------------------------------------------------------------
@@ -243,7 +241,8 @@ class aNcscan(Macro, scancl):
 
     def run(self, *args):
         if self.do_scan:
-            self._gScan.scan_loop()
+            for step in self._gScan.step_scan():
+                yield step
 
     def getCommand(self):
         return self._get_command('a')
