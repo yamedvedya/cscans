@@ -6,7 +6,9 @@ Author yury.matveev@desy.de
 
 # general python imports
 import PyTango
-from imp import reload
+import threading
+import types
+import operator
 
 # Sardana imports
 

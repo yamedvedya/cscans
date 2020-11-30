@@ -37,9 +37,11 @@ class ExcThread(threading.Thread):
         self._stop_event = threading.Event()
         self.bucket = errorBucket
         self._name = threadname
+        self.status = 'idle'
 
     # ----------------------------------------------------------------------
     def run(self):
+        self.status = 'running'
         try:
             if hasattr(self, '_Thread__target'):
                 self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
@@ -48,6 +50,8 @@ class ExcThread(threading.Thread):
         except Exception as exp:
             # traceback.print_tb(sys.exc_info()[2])
             self.bucket.put([self._name, sys.exc_info()[0], sys.exc_info()[2]])
+        finally:
+            self.status = 'finished'
 
     # ----------------------------------------------------------------------
     def stop(self):
