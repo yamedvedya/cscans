@@ -57,10 +57,10 @@ class TimerWorker(object):
 
             self._point += 1
 
-            _start_time = time.time()
             if self._macro.debug_mode:
                 self._macro.debug('Start timer point {}'.format(self._point))
 
+            _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
             self._timing_logger['Timer'].append(time.time() - _start_time)
 
