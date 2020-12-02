@@ -213,14 +213,14 @@ class LambdaRoiWorker(object):
     def add_channel(self, source_info):
 
         if 'atten' in source_info.label:
-            self._channels.append([int(source_info.label[-7])-1, source_info.full_name, True])
+            self._channels.append([int(source_info.label[-7])-1, source_info.label, source_info.full_name, True])
             self._correction_needed = True
 
         elif source_info.label == 'lmbd':
-            self._channels.append([-1, source_info.full_name, False])
+            self._channels.append([-1, source_info.label, source_info.full_name, False])
 
         else:
-            self._channels.append([int(source_info.label[-1])-1, source_info.full_name, False])
+            self._channels.append([int(source_info.label[-1])-1, source_info.label, source_info.full_name, False])
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
@@ -232,26 +232,27 @@ class LambdaRoiWorker(object):
                     self.data_buffer[point_to_collect] = {}
                     while time.time() - _start_time < TIMEOUT:
                         if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
-
+                            _data_to_print = {}
                             if self._correction_needed:
                                 atten = self._attenuator_proxy.Position
                             else:
                                 atten = 1
 
-                            for channel_num, label, need_correction in self._channels:
+                            for channel_num, label, full_name, need_correction in self._channels:
                                 if channel_num == -1:
-                                    self.data_buffer[point_to_collect][label] = -1
+                                    data = -1
                                 else:
                                     data = self._device_proxy.getroiforframe([channel_num, point_to_collect + 1])
                                     if need_correction:
                                         data *= atten
-                                    self.data_buffer[point_to_collect][label] = data
+
+                                self.data_buffer[point_to_collect][full_name] = data
+                                _data_to_print[label] = data
 
                             self._timing_logger['Lambda'].append(time.time() - _start_time)
 
                             if self._macro.debug_mode:
-                                self._macro.debug('Lambda point {} data {}'.format(point_to_collect,
-                                                                                   self.data_buffer[point_to_collect]))
+                                self._macro.debug('Lambda point {} data {}'.format(point_to_collect, _data_to_print))
 
                             self.last_collected_point = point_to_collect
 

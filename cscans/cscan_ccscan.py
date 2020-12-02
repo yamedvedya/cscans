@@ -79,7 +79,7 @@ class CCScan(CSScan):
                 _worker_triggers.append(Queue())
                 num_counters += 1
             else:
-                _lambda_trigger = Queue()
+                _lambda_trigger = [Queue()]
                 self._timing_logger['Lambda'] = []
                 self._has_lambda = True
                 self._original_trigger_mode, self._original_operating_mode = None, None
@@ -93,7 +93,7 @@ class CCScan(CSScan):
         self._data_workers = []
 
         if self._has_lambda:
-            _lambda_worker = LambdaRoiWorker(_lambda_trigger, self._error_queue, self.macro, self._timing_logger)
+            _lambda_worker = LambdaRoiWorker(_lambda_trigger[0], self._error_queue, self.macro, self._timing_logger)
             self._data_workers.append(_lambda_worker)
 
         #We start main data collector loop
@@ -490,8 +490,10 @@ class CCScan(CSScan):
             header = 'Point;'
             for name, values in self._timing_logger.items():
                 try:
-                    if name == 'Point_dead_time':
-                        self._macro.warning('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
+                    median = np.median(values)
+                    max = np.max(values)
+                    if name not in ['Lambda', 'Timer', 'Data_collection'] and (median > 1e-2 or max > 2e-2):
+                        self._macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
                     else:
                         self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
                     data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
