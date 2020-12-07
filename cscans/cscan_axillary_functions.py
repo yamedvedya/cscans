@@ -8,7 +8,7 @@ import time
 import threading
 import sys
 
-from cscan_constants import *
+from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
 #

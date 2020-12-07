@@ -15,8 +15,8 @@ from sardana.util.motion import Motor as VMotor
 from sardana.util.motion import MotionPath
 
 # cscan imports, always reloaded to track changes
-from cscan_ccscan import CCScan
-from cscan_constants import *
+from cscans.cscan_ccscan import CCScan
+from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
 #
@@ -223,3 +223,12 @@ class HklCScan(CCScan):
                 hook()
 
         self.on_waypoints_end()
+
+def get_real_coordinates(reciprocal):
+    return [np.sin(reciprocal[0]), 2*np.cos(reciprocal[0]),
+            0.5*np.square(np.sin(reciprocal[0])), 3*np.square(np.cos(reciprocal[0]))]
+
+def get_reciprocal_coordinates(real):
+    return [np.arcsin(real[0]), 0, 0]
+
+

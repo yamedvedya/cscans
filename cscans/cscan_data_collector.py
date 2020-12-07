@@ -8,11 +8,14 @@ Author yury.matveev@desy.de
 import time
 import sys
 
-from Queue import Empty as empty_queue
+if sys.version_info.major >= 3:
+    from queue import Empty as empty_queue
+else:
+    from Queue import Empty as empty_queue
 
 # cscan imports
-from cscan_axillary_functions import ExcThread
-from cscan_constants import *
+from cscans.cscan_axillary_functions import ExcThread
+from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
 #

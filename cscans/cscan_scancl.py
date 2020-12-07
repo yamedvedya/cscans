@@ -6,9 +6,6 @@ Author yury.matveev@desy.de
 
 # general python imports
 import PyTango
-import threading
-import types
-import operator
 
 # Sardana imports
 
@@ -17,9 +14,9 @@ from sardana.macroserver.macros.scan import getCallable, UNCONSTRAINED
 from sardana.macroserver.scan.scandata import MoveableDesc
 
 # cscan imports
-from cscan_ccscan import CCScan
-from cscan_hklcscan import HklCScan
-from cscan_constants import *
+from cscans.cscan_ccscan import CCScan
+from cscans.cscan_hklcscan import HklCScan
+from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
 #

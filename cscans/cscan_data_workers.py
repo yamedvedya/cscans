@@ -10,13 +10,16 @@ import PyTango
 import time
 import sys
 
-import numpy as np
-from Queue import Queue
-from Queue import Empty as empty_queue
+if sys.version_info.major >= 3:
+    from queue import Queue
+    from queue import Empty as empty_queue
+else:
+    from Queue import Queue
+    from Queue import Empty as empty_queue
 
 # cscan imports
-from cscan_axillary_functions import ExcThread, EndMeasurementBarrier
-from cscan_constants import *
+from cscans.cscan_axillary_functions import ExcThread, EndMeasurementBarrier
+from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
 #                       Timer class

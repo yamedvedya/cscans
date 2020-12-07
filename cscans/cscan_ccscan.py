@@ -5,14 +5,19 @@ Author yury.matveev@desy.de
 '''
 
 # general python imports
+import sys
 import time
 import os
 import PyTango
 import numpy as np
 from collections import OrderedDict
 
-from Queue import Queue
-from Queue import Empty as empty_queue
+if sys.version_info.major >= 3:
+    from queue import Queue
+    from queue import Empty as empty_queue
+else:
+    from Queue import Queue
+    from Queue import Empty as empty_queue
 
 # Sardana imports
 
@@ -24,10 +29,10 @@ from sardana.macroserver.scan.gscan import ScanException
 
 # cscan imports, always reloaded to track changes
 
-from cscan_axillary_functions import EndMeasurementBarrier, ExcThread
-from cscan_data_workers import DataSourceWorker, LambdaRoiWorker, TimerWorker
-from cscan_data_collector import DataCollectorWorker
-from cscan_constants import *
+from cscans.cscan_axillary_functions import EndMeasurementBarrier
+from cscans.cscan_data_workers import DataSourceWorker, LambdaRoiWorker, TimerWorker
+from cscans.cscan_data_collector import DataCollectorWorker
+from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
 #
