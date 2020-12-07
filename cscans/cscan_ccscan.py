@@ -15,9 +15,11 @@ from collections import OrderedDict
 if sys.version_info.major >= 3:
     from queue import Queue
     from queue import Empty as empty_queue
+    old_python = False
 else:
     from Queue import Queue
     from Queue import Empty as empty_queue
+    old_python = True
 
 # Sardana imports
 
@@ -45,8 +47,9 @@ class CCScan(CSScan):
         super(CCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc)
 
-        # Parsing measurement group:
-
+        # if not old_python:
+        #     self.macro.output(self.period_steps)
+        #     raise RuntimeError('Test run')
         self._finished = False
 
         self._has_lambda = False
@@ -332,7 +335,11 @@ class CCScan(CSScan):
         for _, waypoint in self.steps:
 
             # get integ_time for this loop
-            _, step_info = self.period_steps.next()
+            if old_python:
+                _, step_info = self.period_steps.next()
+            else:
+                _, step_info = next(self.period_steps)
+
             self._data_collector.set_new_step_info(step_info)
             self._timer_worker.set_new_period(self._integration_time)
 
@@ -360,6 +367,8 @@ class CCScan(CSScan):
 
             if self.macro.isStopped():
                 return
+
+            self._timer_worker.set_start_position()
 
             # prepare motor(s) with the velocity required for synchronization
             for path in self._motion_paths:
@@ -422,9 +431,6 @@ class CCScan(CSScan):
         else:
             while self._main_motor.Position > self._position_start:
                 time.sleep(REFRESH_PERIOD)
-
-        if self.macro.debug_mode:
-            self.macro.debug("Passed start point {}".format(self._main_motor.Position))
 
         acq_start_time = time.time()
         self._data_collector.set_acq_start_time(acq_start_time)

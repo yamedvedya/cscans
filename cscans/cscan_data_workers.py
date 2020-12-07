@@ -9,6 +9,7 @@ Author yury.matveev@desy.de
 import PyTango
 import time
 import sys
+import numpy as np
 
 if sys.version_info.major >= 3:
     from queue import Queue
@@ -109,6 +110,10 @@ class TimerWorker(object):
             self._timing_logger['Point_dead_time'].append(time.time() - _start_time)
 
         self._position_measurement.close()
+
+    # ----------------------------------------------------------------------
+    def set_start_position(self):
+        self.last_position = self._position_measurement.get_motors_position()[0]
 
     # ----------------------------------------------------------------------
     def stop(self):
