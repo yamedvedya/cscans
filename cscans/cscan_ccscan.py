@@ -423,10 +423,12 @@ class CCScan(CSScan):
             while self._main_motor.Position > self._position_start:
                 time.sleep(REFRESH_PERIOD)
 
+        if self.macro.debug_mode:
+            self.macro.debug("Passed start point {}".format(self._main_motor.Position))
+
         acq_start_time = time.time()
         self._data_collector.set_acq_start_time(acq_start_time)
         self._timer_worker.start()
-        self.flushOutput()
 
         #after first point generate triggers every integ_time
         while self.motion_event.is_set() and not self._finished:
@@ -510,6 +512,7 @@ class CCScan(CSScan):
 
             data_to_save = np.transpose(data_to_save)
             np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
+            self.macro.info('Detector timing log saved in {}'.format(file_name))
 
         if self.macro.debug_mode:
             self.macro.debug("_finish_scan() done")
