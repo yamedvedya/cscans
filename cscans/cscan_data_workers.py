@@ -58,21 +58,46 @@ class TimerWorker(object):
             if self._macro.debug_mode:
                 self._macro.debug('Start timer point {}'.format(self._point + 1))
 
+            _start_position = None
+            _position_time1 = None
+            _end_position = None
+            _position_time2 = None
+
+            if MOTORS_POSITION_LOGIC in ['before', 'center']:
+                _start_time = time.time()
+                _start_position = self._position_measurement.get_motors_position()
+                _position_time1 = time.time() - _start_time
+
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
             self._timing_logger['Timer'].append(time.time() - _start_time)
 
-            _start_time = time.time()
-            position = self._position_measurement.get_motors_position()
-            if position[0] == self.last_position:
+            if MOTORS_POSITION_LOGIC in ['center', 'after']:
+                _start_time = time.time()
+                _end_position = self._position_measurement.get_motors_position()
+                _position_time2 = time.time() - _start_time
+
+            if MOTORS_POSITION_LOGIC == 'before':
+                _position = _start_position
+                _timing = _position_time1
+            elif MOTORS_POSITION_LOGIC == 'center':
+                _position = (_start_position + _end_position)/2
+                _timing = _position_time1 + _position_time2
+            else:
+                _position = _end_position
+                _timing = _position_time2
+
+            self._timing_logger['Position_measurement'].append(_timing)
+
+            if _position[0] == self.last_position:
                 break
 
             self._point += 1
-            self.last_position = position[0]
-            self._timing_logger['Position_measurement'].append(time.time() - _start_time)
+            self.last_position = _position[0]
 
             _start_time2 = time.time()
-            self._data_collector_trigger.put([self._point, time.time(), position])
+            self._data_collector_trigger.put([self._point, time.time(), _position])
+
             for trigger in self._triggers:
                 trigger.put(self._point)
             self._workers_done_barrier.wait()
@@ -295,7 +320,7 @@ class MovingGroupPosition(object):
 
         self._macro = macro
 
-        if MOTORS_POSITION == 'sync':
+        if MOTORS_POSITION_MODE == 'sync':
             self._motors_reported_barrier = EndMeasurementBarrier(len(motors_list))
             self._motor_triggers = [Queue() for _ in motors_list]
             self._devices = [MotorPosition(motor, trigger, self._motors_reported_barrier, error_queue)
@@ -310,12 +335,12 @@ class MovingGroupPosition(object):
 
     # ----------------------------------------------------------------------
     def get_motors_position(self):
-        if MOTORS_POSITION == 'sync':
+        if MOTORS_POSITION_MODE == 'sync':
             for ind, trigger in enumerate(self._motor_triggers):
                 trigger.put(ind)
             self._motors_reported_barrier.wait()
 
-        return [device.position for device in self._devices]
+        return np.array([device.position for device in self._devices])
 
     # ----------------------------------------------------------------------
     def close(self):

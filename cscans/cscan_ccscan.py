@@ -505,6 +505,7 @@ class CCScan(CSScan):
 
             data_to_save = np.transpose(data_to_save)
             np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
+            self.macro.info('Detector timing log saved in {}'.format(file_name))
 
         if self.macro.debug_mode:
             self.macro.debug("_finish_scan() done")
