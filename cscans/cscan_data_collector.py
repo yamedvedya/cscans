@@ -97,6 +97,8 @@ class DataCollectorWorker(object):
                             if self._macro.debug_mode:
                                 self._macro.debug('Not reported: {}'.format(_not_reported))
                                 self._macro.debug("datacollected was stopped")
+                                if _not_reported == 'Lambda' and self.last_collected_point == -1:
+                                    self._macro.error('There was no reply from Lambda, check the trigger cable!!!!')
 
             self.status = 'finished'
             if self._macro.debug_mode:

@@ -55,18 +55,19 @@ class TimerWorker(object):
     def _main_loop(self):
         while not self._worker.stopped():
 
-            self._point += 1
-
             if self._macro.debug_mode:
-                self._macro.debug('Start timer point {}'.format(self._point))
+                self._macro.debug('Start timer point {}'.format(self._point + 1))
 
             _start_time = time.time()
             self._device_proxy.StartAndWaitForTimer()
             self._timing_logger['Timer'].append(time.time() - _start_time)
 
             _start_time = time.time()
-            # position = [device.Position for device in self._motors_devices]
             position = self._position_measurement.get_motors_position()
+            if position[0] == self.last_position:
+                break
+
+            self._point += 1
             self.last_position = position[0]
             self._timing_logger['Position_measurement'].append(time.time() - _start_time)
 
@@ -150,6 +151,8 @@ class DataSourceWorker(object):
                     _start_time = time.time()
                     data = getattr(self._device_proxy, self._device_attribute)
                     self.data_buffer[point_to_collect][self.channel_name] = data
+                    if self._is_counter:
+                        self._counter_proxy.Reset()
                     self._workers_done_barrier.report()
                     self.last_collected_point = point_to_collect
 
@@ -230,6 +233,7 @@ class LambdaRoiWorker(object):
                     point_to_collect = self._trigger.get(block=False)
                     _start_time = time.time()
                     self.data_buffer[point_to_collect] = {}
+                    _success = False
                     while time.time() - _start_time < TIMEOUT:
                         if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
                             _data_to_print = {}
@@ -256,10 +260,14 @@ class LambdaRoiWorker(object):
 
                             self.last_collected_point = point_to_collect
 
+                            _success = True
                             break
 
                         else:
                             time.sleep(REFRESH_PERIOD)
+
+                    if not _success:
+                        raise RuntimeError('No response from Lambda!')
 
                 except empty_queue:
                     time.sleep(REFRESH_PERIOD)

@@ -491,9 +491,8 @@ class CCScan(CSScan):
             for name, values in self._timing_logger.items():
                 try:
                     median = np.median(values)
-                    max = np.max(values)
-                    if name not in ['Lambda', 'Timer', 'Data_collection'] and (median > 1e-2 or max > 2e-2):
-                        self._macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
+                    if name not in ['Lambda', 'Timer', 'Data_collection'] and median > 1e-2:
+                        self._macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.4f} max {:.4f}'.format(name, median, np.max(values)))
                     else:
                         self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
                     data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
