@@ -479,12 +479,12 @@ class CCScan(CSScan):
         for worker in self._data_workers:
             worker.stop()
 
-        if hasattr(macro, 'getHooks'):
-            for hook in macro.getHooks('post-acq'):
+        if hasattr(self.macro, 'getHooks'):
+            for hook in self.macro.getHooks('post-acq'):
                 hook()
-            for hook in macro.getHooks('post-move'):
+            for hook in self.macro.getHooks('post-move'):
                 hook()
-            for hook in macro.getHooks('post-scan'):
+            for hook in self.macro.getHooks('post-scan'):
                 hook()
 
         env = self._env
@@ -503,16 +503,16 @@ class CCScan(CSScan):
                 try:
                     median = np.median(values)
                     if name not in ['Lambda', 'Timer', 'Data_collection'] and median > 1e-2:
-                        self._macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.4f} max {:.4f}'.format(name, median, np.max(values)))
+                        self.macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.4f} max {:.4f}'.format(name, median, np.max(values)))
                     else:
-                        self._macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
+                        self.macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values), np.max(values)))
                     data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
                     header += name + ';'
                 except:
                     pass
 
-            file_name = os.path.join(self._macro.getEnv('ScanDir'),
-                                     'time_log_' + str(self._macro.getEnv('ScanID')) + '.tlog')
+            file_name = os.path.join(self.macro.getEnv('ScanDir'),
+                                     'time_log_' + str(self.macro.getEnv('ScanID')) + '.tlog')
 
             data_to_save = np.transpose(data_to_save)
             np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
