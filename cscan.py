@@ -220,7 +220,7 @@ class ctscan(aNcscan):
 
         self._steps = int(total_time/integ_time)
 
-        self._prepare('ascan', [motor], np.array([0], dtype='d'),
+        self._prepare('ascan', 'real', [motor], np.array([0], dtype='d'),
                       np.array([total_time], dtype='d'), int(total_time/integ_time) + 1, integ_time, **opts)
 
     def getCommand(self):

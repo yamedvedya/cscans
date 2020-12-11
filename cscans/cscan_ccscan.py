@@ -187,7 +187,7 @@ class CCScan(CSScan):
         if self.macro.debug_mode:
             self.macro.debug("prepare_waypoint() entering...")
 
-        travel_time = waypoint["integ_time"] * waypoint["npts"] * 1.1
+        travel_time = waypoint["integ_time"] * waypoint["npts"]
 
         original_duration, self._acq_duration, overhead_time = travel_time, travel_time, 0
 
@@ -332,66 +332,56 @@ class CCScan(CSScan):
         if self.macro.debug_mode:
             self.macro.debug("_go_through_waypoints() entering...")
 
-        for _, waypoint in self.steps:
+        # get integ_time for this loop
+        if old_python:
+            _, step_info = self.period_steps.next()
+        else:
+            _, step_info = next(self.period_steps)
 
-            # get integ_time for this loop
-            if old_python:
-                _, step_info = self.period_steps.next()
-            else:
-                _, step_info = next(self.period_steps)
+        self._data_collector.set_new_step_info(step_info)
+        self._timer_worker.set_new_period(self._integration_time)
 
-            self._data_collector.set_new_step_info(step_info)
-            self._timer_worker.set_new_period(self._integration_time)
+        if self._has_lambda:
+            self._setup_lambda(self._integration_time)
 
-            if self._has_lambda:
-                self._setup_lambda(self._integration_time)
+        start_pos, final_pos = [], []
+        for path in self._motion_paths:
+            start_pos.append(path.initial_user_pos)
+            final_pos.append(path.final_user_pos)
 
-            # execute pre-move hooks
-            for hook in waypoint.get('pre-move-hooks', []):
-                hook()
+        if self.macro.debug_mode:
+            self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
+        if self.macro.isStopped():
+            return
 
-            start_pos, final_pos = [], []
-            for path in self._motion_paths:
-                start_pos.append(path.initial_user_pos)
-                final_pos.append(path.final_user_pos)
+        # move to start position
+        if self.macro.debug_mode:
+            self.macro.debug("Moving to start position: {}".format(start_pos))
+        self.motion.move(start_pos)
 
-            if self.macro.debug_mode:
-                self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
-            if self.macro.isStopped():
-                return
+        if self.macro.isStopped():
+            return
 
-            # move to start position
-            if self.macro.debug_mode:
-                self.macro.debug("Moving to start position: {}".format(start_pos))
-            self.motion.move(start_pos)
+        self._timer_worker.set_start_position()
 
-            if self.macro.isStopped():
-                return
+        # prepare motor(s) with the velocity required for synchronization
+        for path in self._motion_paths:
+            path.physical_motor.setVelocity(path.motor.getMaxVelocity())
+            path.physical_motor.setAcceleration(path.motor.getAccelerationTime())
+            path.physical_motor.setDeceleration(path.motor.getDecelerationTime())
 
-            self._timer_worker.set_start_position()
+        if self.macro.isStopped():
+            return
 
-            # prepare motor(s) with the velocity required for synchronization
-            for path in self._motion_paths:
-                path.physical_motor.setVelocity(path.motor.getMaxVelocity())
-                path.physical_motor.setAcceleration(path.motor.getAccelerationTime())
-                path.physical_motor.setDeceleration(path.motor.getDecelerationTime())
+        self.motion_event.set()
 
-            if self.macro.isStopped():
-                return
+        # move to waypoint end position
+        if self.macro.debug_mode:
+            self.macro.debug("Moving to final position: {}".format(final_pos))
+        self.motion.move(final_pos)
 
-            self.motion_event.set()
-
-            # move to waypoint end position
-            if self.macro.debug_mode:
-                self.macro.debug("Moving to final position: {}".format(final_pos))
-            self.motion.move(final_pos)
-
-            self.motion_event.clear()
-            # self.macro.output("Clear motion event, state: {}".format(self.motion_event.is_set()))
-
-            # execute post-move hooks
-            for hook in waypoint.get('post-move-hooks', []):
-                hook()
+        self.motion_event.clear()
+        # self.macro.output("Clear motion event, state: {}".format(self.motion_event.is_set()))
 
     # ----------------------------------------------------------------------
     def scan_loop(self):
@@ -407,7 +397,9 @@ class CCScan(CSScan):
             for hook in self.macro.getHooks('pre-scan'):
                 hook()
 
-        if hasattr(self.macro, 'getHooks'):
+            for hook in self.macro.getHooks('pre-move-hooks'):
+                hook()
+
             for hook in self.macro.getHooks('pre-acq'):
                 hook()
 
@@ -457,6 +449,10 @@ class CCScan(CSScan):
             else:
                 self._finished = self._timer_worker.last_position <= self._position_stop
 
+        if self.macro.debug_mode:
+            self.macro.debug('scan finished {} {} {}'.format(self._movement_direction,
+                                                             self._timer_worker.last_position,
+                                                             self._position_stop))
         self._finish_scan()
 
         yield 100
@@ -485,6 +481,8 @@ class CCScan(CSScan):
 
         if hasattr(macro, 'getHooks'):
             for hook in macro.getHooks('post-acq'):
+                hook()
+            for hook in macro.getHooks('post-move'):
                 hook()
             for hook in macro.getHooks('post-scan'):
                 hook()

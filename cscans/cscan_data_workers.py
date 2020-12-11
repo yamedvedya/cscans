@@ -94,6 +94,9 @@ class TimerWorker(object):
             self._timing_logger['Position_measurement'].append(_timing)
 
             if _position[0] == self.last_position:
+                if self._macro.debug_mode:
+                    self._macro.debug('Timer stops due to repeating positions {} == {}'.format(_position[0],
+                                                                                               self.last_position))
                 break
 
             self._point += 1
