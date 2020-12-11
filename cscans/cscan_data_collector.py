@@ -14,7 +14,7 @@ else:
     from Queue import Empty as empty_queue
 
 # cscan imports
-from cscans.cscan_axillary_functions import ExcThread
+from cscans.cscan_axillary_functions import ExcThread, get_reciprocal_coordinates
 from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
@@ -41,6 +41,7 @@ class DataCollectorWorker(object):
         self._step_info = None
         self.last_collected_point = -1
         self._stop_after = 1e15
+
 
         self._worker = ExcThread(self._data_collector_loop, 'data_collector', error_queue)
         self.status = 'waiting'
@@ -88,6 +89,19 @@ class DataCollectorWorker(object):
                             # Add final moveable positions
                             data_line['point_nb'] = _last_started_point
                             data_line['timestamp'] = _end_time - self.acq_start_time
+
+                            if self._macro._space == 'reciprocal':
+                                if self.nb_motors != 7:
+                                    angles = [mu, theta, chi, phi, gamma, delta]
+                                else:
+                                    angles = [omega_t, mu, theta, chi, phi, gamma, delta]
+
+                                # self._macro.diffrac.write_attribute("computehkl", angles)
+                                # _motor_position = self._macro.diffrac.computehkl
+
+                                _motor_position = get_reciprocal_coordinates(_motor_position)
+
+
                             for i, m in enumerate(self._moveables):
                                 data_line[m.moveable.getName()] = _motor_position[i]
 

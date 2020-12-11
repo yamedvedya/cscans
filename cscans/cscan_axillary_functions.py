@@ -7,6 +7,7 @@ Author yury.matveev@desy.de
 import time
 import threading
 import sys
+import numpy as np
 
 from cscans.cscan_constants import *
 
@@ -60,3 +61,13 @@ class ExcThread(threading.Thread):
     # ----------------------------------------------------------------------
     def stopped(self):
         return self._stop_event.isSet()
+
+# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+def get_real_coordinates(reciprocal):
+    return [np.sin(reciprocal[0]), np.cos(reciprocal[0]),
+            reciprocal[0], 2*np.sin(reciprocal[0])]
+
+def get_reciprocal_coordinates(real):
+    return [np.arcsin(real[0]), 0, 0]

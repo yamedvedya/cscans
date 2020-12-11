@@ -34,6 +34,7 @@ class scancl(Hookable):
         self.start_pos = []
         self.final_pos = []
         self.original_positions = []
+        self.space = space
 
         for mot, start, final in zip(motor, start_pos, final_pos):
             motor, start_pos, final_pos, original_pos = self._parse_motors(mot, start, final)
@@ -103,14 +104,14 @@ class scancl(Hookable):
         extrainfodesc = opts.get('extrainfodesc', [])
 
         # create an instance of CScan
-        if space == 'real':
+        if self.space == 'real':
             self._gScan = CCScan(self,
                                  waypointGenerator=self._waypoint_generator,
                                  periodGenerator=self._period_generator,
                                  moveables=moveables, env=env,
                                  constraints=constrains, extrainfodesc=extrainfodesc)
 
-        elif space == 'reciprocal':
+        elif self.space == 'reciprocal':
             for moveable in moveables:
                 moveable.moveable.elements = moveable.moveable.getPoolData()['elements']
 

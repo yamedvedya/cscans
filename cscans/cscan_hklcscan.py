@@ -5,18 +5,30 @@ Author yury.matveev@desy.de
 '''
 
 # general python imports
-import time
-import PyTango
+import sys
+if sys.version_info.major >= 3:
+    from queue import Queue
+    from queue import Empty as empty_queue
+    old_python = False
+else:
+    from Queue import Queue
+    from Queue import Empty as empty_queue
+    old_python = True
 
 import numpy as np
+import PyTango
+import time
 
 # Sardana imports
 from sardana.util.motion import Motor as VMotor
-from sardana.util.motion import MotionPath
 
 # cscan imports, always reloaded to track changes
 from cscans.cscan_ccscan import CCScan
+from cscans.cscan_movement_monitor import Status_Monitor
+from cscans.cscan_axillary_functions import get_real_coordinates
+
 from cscans.cscan_constants import *
+
 
 # ----------------------------------------------------------------------
 #
@@ -29,10 +41,13 @@ class HklCScan(CCScan):
         super(HklCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc)
 
-        for motor in self._physical_moveables:
-            for param in ['getBaseRate', 'getVelocity', 'getAcceleration', 'getName']:
-                self.macro.output('{}: {}'.format(param, getattr(motor, param)()))
-        self._go_through_waypoints()
+        self._command_lists = []
+        self._start_positions = None
+
+        # for motor in self._physical_moveables:
+        #     for param in ['getBaseRate', 'getVelocity', 'getAcceleration', 'getName']:
+        #         self.macro.output('{}: {}'.format(param, getattr(motor, param)()))
+        # self._go_through_waypoints()
 
         self.macro.output('moveables_trees {}'.format(self._moveables_trees))
         self.macro.output('physical_motion {}'.format(self._physical_motion))
@@ -58,50 +73,119 @@ class HklCScan(CCScan):
     # ----------------------------------------------------------------------
     def _get_positions_for_hkl(self, hkl_values):
 
-        self.macro.diffrac.write_attribute("computetrajectoriessim", hkl_values)
-        return self.macro.diffrac.trajectorylist[0]
+        # self.macro.diffrac.write_attribute("computetrajectoriessim", hkl_values)
+        # return self.macro.diffrac.trajectorylist[0]
+
+        return get_real_coordinates(hkl_values)
 
     # ----------------------------------------------------------------------
-    def _check_speed_for_segments(self, trajectory, slow_down=1):
+    def _get_speed_for_dx(self, v_st, dx, dt, a):
+        if v_st*dt > dx:
+            a *= -1
 
-        calculated_paths = np.empty((trajectory.shape[0] - 1, trajectory.shape[1])).tolist()
+        b = -2*(a*dt + v_st)
+        c = np.square(v_st) + 2*a*dx
+        D = np.square(b) - 4*c
 
+        v_end = -(b+np.sqrt(D))/2
+        t = (v_end-v_st)/a
+
+        #only one root has a physical meaning
+        if 0 < t < dt:
+            return v_end
+        else:
+            return -(b-np.sqrt(D))/2
+
+    # ----------------------------------------------------------------------
+    def _calculate_speeds(self, trajectory, ideal_period):
+        # first get longest travel:
+        real_period = ideal_period
+        real_accels = np.zeros(trajectory.shape[1])
         for mot_ind, motor in enumerate(self._physical_moveables):
             try:
                 motor_vel = motor.getVelocity()
             except AttributeError:
                 raise RuntimeError("{} don't have Velocity parameter, cscans is impossible".format(motor))
 
-            motor_accel = motor.getAcceleration()
+            max_motor_period = np.max(np.abs(np.diff(trajectory[:, mot_ind])) / motor_vel)
+            if max_motor_period > real_period:
+                real_period = max_motor_period
+                self.macro.output(
+                    'The required travel time cannot be reached due to {} cannot travel with such high speed'.format(
+                        motor.getName()))
 
-            for point_ind in range(trajectory.shape[0] - 1):
+            try:
+                motor_accel = motor.getAcceleration()
+            except AttributeError:
+                raise RuntimeError("{} don't have Acceleration parameter, cscans is impossible".format(motor))
+            real_accels[mot_ind] = motor_vel / motor_accel
 
-                motor_path = MotionPath(VMotor(min_vel=motor_vel, max_vel=motor_vel,
-                                               accel_time=motor_accel, decel_time=1e-15),
-                                        trajectory[point_ind, mot_ind], trajectory[point_ind+1, mot_ind])
+            accel_correction = np.sqrt(
+                np.max(np.abs(np.diff(np.diff(trajectory[:, mot_ind]) / real_period) / real_period))
+                / real_accels[mot_ind])
+            if accel_correction > 1:
+                self.macro.output(
+                    'The required travel time cannot be reached due to {} cannot accelerate so fast'.format(
+                        motor.getName()))
+                real_period *= accel_correction
 
+        if self.macro.debug_mode:
+            self.macro.debug('ideal_period {} period {}'.format(ideal_period, real_period))
 
-                # recalculate cruise duration of motion at top velocity
-                if motor_path.duration > self._acq_duration:
-                    if self.macro.debug_mode:
-                        self.macro.debug(
-                            'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
-                    self.macro.output(
-                        'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
-                            moveable.name))
+        # calculate ideal start speed:
+        _solution_found = False
+        _attempt = 0
+        while not _solution_found and _attempt < 1000:
+            _attempt += 1
+            _solution_found = True
+            calculated_speeds = np.zeros_like(trajectory)
+            for mot_ind, motor in enumerate(self._physical_moveables):
+                calculated_speeds[1, mot_ind] = calculated_speeds[0, mot_ind] = \
+                    (trajectory[1, mot_ind] - trajectory[0, mot_ind]) / real_period
+                for idx, dx in enumerate(np.diff(trajectory[1:, mot_ind])):
+                    _new_speed = self._get_speed_for_dx(calculated_speeds[idx + 1, mot_ind],
+                                                        np.abs(dx), real_period, real_accels[mot_ind])
+                    if np.isnan(_new_speed):
+                        _solution_found = False
+                        real_period *= 1.01
+                        if self.macro.debug_mode:
+                            self.macro.debug('Solution not found. Need to increase period to{}'.format(real_period))
+                        break
+                    else:
+                        calculated_speeds[idx + 2, mot_ind] = _new_speed
 
-                    self._acq_duration = motor_path.duration
+        if not _solution_found:
+            raise RuntimeError("Cannot find solution")
 
-                    calculated_paths.append(motor_path)
+        start_positions = np.zeros(trajectory.shape[1])
+        end_positions = np.zeros(trajectory.shape[1])
+
+        for mot_ind, motor in enumerate(self._physical_moveables):
+            disp_sign = np.sign(trajectory[1, mot_ind] - trajectory[0, mot_ind])
+
+            start_positions[mot_ind] = trajectory[0, mot_ind] - disp_sign * VMotor(min_vel=motor.getBaseRate(),
+                                                       max_vel=calculated_speeds[0, mot_ind],
+                                                       accel_time=motor.getAcceleration(),
+                                                       decel_time=1e-15).displacement_reach_max_vel
+
+            if not self._check_motor_limits(motor, start_positions[mot_ind]):
+                raise RuntimeError(
+                    'Cscan cannot be performed due to the start overhead for {} is out of the limits'.format(
+                        motor.getName()))
+
+            end_positions[mot_ind] = trajectory[-1, mot_ind] + disp_sign * VMotor(min_vel=motor.getBaseRate(),
+                                                      max_vel=calculated_speeds[-1, mot_ind],
+                                                      accel_time=1e-15,
+                                                      decel_time=motor.getAcceleration()).displacement_reach_min_vel
+            if not self._check_motor_limits(motor, start_positions[mot_ind]):
+                raise RuntimeError(
+                    'Cscan cannot be performed due to the stop overhead for {} is out of the limits'.format(
+                        motor.getName()))
+
+        return calculated_speeds, start_positions, end_positions, real_period/ideal_period
 
     # ----------------------------------------------------------------------
-    def _calculate_start_displacement(self):
-        try:
-            base_vel = motor.getBaseRate()
-        except AttributeError:
-            raise RuntimeError("{} don't have BaseRate parameter, cscans is impossible".format(motor))
-    # ----------------------------------------------------------------------
-    def prepare_waypoint(self, waypoint, iterate_only=False):
+    def prepare_waypoint(self, waypoint):
         ### This function basically repeats the original, The only difference is that "slow_down" factor changed
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
@@ -109,7 +193,7 @@ class HklCScan(CCScan):
         if self.macro.debug_mode:
             self.macro.debug("prepare_waypoint() entering...")
 
-        travel_time = waypoint["integ_time"] * waypoint["npts"]
+        self._acq_duration = waypoint["integ_time"] * waypoint["npts"]
 
         # first calculate how many steps are needed for each movement:
         n_steps = 0
@@ -145,29 +229,39 @@ class HklCScan(CCScan):
         if self.macro.debug_mode:
             self.macro.debug('_real_trajectory: {}'.format(_real_trajectory))
 
-        raise RuntimeError('Test run')
+        calculated_speeds, self._start_positions, end_positions, integration_time_correction =\
+            self._calculate_speeds(_real_trajectory, self._acq_duration / n_steps)
+
+        self._integration_time = waypoint["integ_time"] * integration_time_correction
+
+        for ind in range(len(self.moveables)):
+            cmd = ["slew: {}, position: {}".format(slew_rate, position) for slew_rate, position in
+                    zip(calculated_speeds[:, ind], _real_trajectory[:, ind])]
+            cmd.append("slew: {}, position: {}".format(calculated_speeds[-1, ind], end_positions))
+            self._command_lists.append(cmd)
+
+        self._position_start = _real_trajectory[0, 0]
+        self._movement_direction = True if _real_trajectory[-1, 0] - _real_trajectory[0, 0] > 0 else False
+        self._position_stop = _real_trajectory[-1, 0]
+
     # ----------------------------------------------------------------------
     def _go_through_waypoints(self):
         """
         Internal, unprotected method to go through the different waypoints.
         """
-        self.macro.output("_go_through_waypoints() entering...")
-
-        self._check_motors_acceleration()
+        if self.macro.debug_mode:
+            self.macro.debug("_go_through_waypoints() entering...")
 
         for _, waypoint in self.steps:
 
-            motion_paths = self.prepare_waypoint(waypoint)
-
             # get integ_time for this loop
-            _, step_info = self.period_steps.next()
-            self._data_collector.set_new_step_info(step_info)
-            self._integration_time = step_info['integ_time'] * self._integration_time_correction
-            if self._integration_time_correction > 1:
-                self.macro.output('Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
-            self._timer_worker.set_new_period(self._integration_time)
+            if old_python:
+                _, step_info = self.period_steps.next()
+            else:
+                _, step_info = next(self.period_steps)
 
-            self._wait_time -= self._integration_time
+            self._data_collector.set_new_step_info(step_info)
+            self._timer_worker.set_new_period(self._integration_time)
 
             if self._has_lambda:
                 self._setup_lambda(self._integration_time)
@@ -176,59 +270,40 @@ class HklCScan(CCScan):
             for hook in waypoint.get('pre-move-hooks', []):
                 hook()
 
-            start_pos, final_pos = [], []
-            for path in motion_paths:
-                start_pos.append(path.initial_user_pos)
-                final_pos.append(path.final_user_pos)
-
-            if self.macro.debug_mode:
-                self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
             if self.macro.isStopped():
-                self.on_waypoints_end()
                 return
 
             # move to start position
             if self.macro.debug_mode:
-                self.macro.debug("Moving to start position: {}".format(start_pos))
-            self.motion.move(start_pos)
+                self.macro.debug("Moving to start position: {}".format(self._start_positions))
+            self._physical_motion.move(self._start_positions)
+
+            _motor_proxies = [PyTango.DeviceProxy(motor.TangoDevice) for motor in self._physical_moveables]
+            _movement_monitor = Status_Monitor(_motor_proxies[0])
 
             if self.macro.isStopped():
-                self.on_waypoints_end()
                 return
 
-            # prepare motor(s) with the velocity required for synchronization
-            for path in motion_paths:
-                path.physical_motor.setVelocity(path.motor.getMaxVelocity())
-                path.physical_motor.setAcceleration(path.motor.getAccelerationTime())
-                path.physical_motor.setDeceleration(path.motor.getDecelerationTime())
-
-            if self.macro.isStopped():
-                self.on_waypoints_end()
-                return
+            self._timer_worker.set_start_position()
 
             self.motion_event.set()
 
             # move to waypoint end position
             if self.macro.debug_mode:
-                self.macro.debug("Moving to final position: {}".format(final_pos))
-            self.motion.move(final_pos)
+                self.macro.debug("Start moving")
+
+            _movement_monitor.start()
+
+            for ind, proxy in enumerate(_motor_proxies):
+                proxy.command_inout("movevvc", self._command_lists[ind])
+
+            while not _movement_monitor.moved():
+                time.sleep(0.1)
 
             self.motion_event.clear()
-
-            if self.macro.isStopped():
-                return self.on_waypoints_end()
+            # self.macro.output("Clear motion event, state: {}".format(self.motion_event.is_set()))
 
             # execute post-move hooks
             for hook in waypoint.get('post-move-hooks', []):
                 hook()
-
-        self.on_waypoints_end()
-
-def get_real_coordinates(reciprocal):
-    return [np.sin(reciprocal[0]), 2*np.cos(reciprocal[0]),
-            0.5*np.square(np.sin(reciprocal[0])), 3*np.square(np.cos(reciprocal[0]))]
-
-def get_reciprocal_coordinates(real):
-    return [np.arcsin(real[0]), 0, 0]
-
 

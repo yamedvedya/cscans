@@ -53,7 +53,6 @@ class CCScan(CSScan):
         self._finished = False
 
         self._has_lambda = False
-        self._integration_time_correction = 1
 
         self._integration_time = None
         self._acq_duration = None

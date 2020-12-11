@@ -19,7 +19,7 @@ else:
     from Queue import Empty as empty_queue
 
 # cscan imports
-from cscans.cscan_axillary_functions import ExcThread, EndMeasurementBarrier
+from cscans.cscan_axillary_functions import ExcThread, EndMeasurementBarrier, get_reciprocal_coordinates
 from cscans.cscan_constants import *
 
 # ----------------------------------------------------------------------
@@ -323,6 +323,30 @@ class LambdaRoiWorker(object):
 #                       Moving group position
 # ----------------------------------------------------------------------
 
+# ----------------------------------------------------------------------
+class Motion_Monitor(object):
+    def __init__(self, motors_list, diffractometer, macro, error_queue):
+        super(Motion_Monitor, self).__init__()
+
+        self._position_measurement = MovingGroupPosition(motors_list, macro, error_queue)
+        self._macro = macro
+        self._real_positions = None
+        self._reciprocal_positions = None
+        self._worker = ExcThread(self._main_loop, 'motion_monitor', error_queue)
+
+    def _main_loop(self):
+        try:
+            self._real_positions = self._position_measurement.get_motors_position()
+            while not self._worker.stopped():
+                positions = self._position_measurement.get_motors_position()
+                self._real_positions.append(positions)
+
+        except Exception as err:
+            self._macro.error('Lambda worker error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
+            raise err
+
+
+# ----------------------------------------------------------------------
 class MovingGroupPosition(object):
     def __init__(self, motors_list, macro, error_queue):
 
