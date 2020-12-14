@@ -47,8 +47,7 @@ class DataCollectorWorker(object):
         self.status = 'waiting'
         self._worker.start()
 
-        if self._macro.debug_mode:
-            self._macro.debug('Data collector started')
+        self._macro.report_debug('Data collector started')
 
     # ----------------------------------------------------------------------
     def _data_collector_loop(self):
@@ -64,8 +63,7 @@ class DataCollectorWorker(object):
                     _not_reported = ''
                     self.status = 'collecting'
                     if _last_started_point > self.last_collected_point:
-                        if self._macro.debug_mode:
-                            self._macro.debug("start collecting data for point {}".format(_last_started_point))
+                        self._macro.report_debug("start collecting data for point {}".format(_last_started_point))
                         data_line = {}
                         all_detector_reported = False
                         while not all_detector_reported and not self._worker.stopped():
@@ -78,8 +76,7 @@ class DataCollectorWorker(object):
                                     _not_reported = worker.channel_name
 
                         if all_detector_reported:
-                            if self._macro.debug_mode:
-                                self._macro.debug("data for point {} is collected".format(_last_started_point))
+                            self._macro.report_debug("data for point {} is collected".format(_last_started_point))
 
                             self.last_collected_point = _last_started_point
 
@@ -90,11 +87,11 @@ class DataCollectorWorker(object):
                             data_line['point_nb'] = _last_started_point
                             data_line['timestamp'] = _end_time - self.acq_start_time
 
-                            if self._macro._space == 'reciprocal':
+                            if self._macro.space == 'reciprocal':
                                 if self.nb_motors != 7:
-                                    angles = [mu, theta, chi, phi, gamma, delta]
+                                    angles = ['mu', 'theta', 'chi', 'phi', 'gamma', 'delta']
                                 else:
-                                    angles = [omega_t, mu, theta, chi, phi, gamma, delta]
+                                    angles = ['omega_t', 'mu', 'theta', 'chi', 'phi', 'gamma', 'delta']
 
                                 # self._macro.diffrac.write_attribute("computehkl", angles)
                                 # _motor_position = self._macro.diffrac.computehkl
@@ -111,15 +108,13 @@ class DataCollectorWorker(object):
 
                             self._data.addRecord(data_line)
                         else:
-                            if self._macro.debug_mode:
-                                self._macro.debug('Not reported: {}'.format(_not_reported))
-                                self._macro.debug("datacollected was stopped")
-                                if _not_reported == 'Lambda' and self.last_collected_point == -1:
-                                    self._macro.error('There was no reply from Lambda, check the trigger cable!!!!')
+                            self._macro.report_debug('Not reported: {}'.format(_not_reported))
+                            self._macro.report_debug("datacollected was stopped")
+                            if _not_reported == 'Lambda' and self.last_collected_point == -1:
+                                self._macro.error('There was no reply from Lambda, check the trigger cable!!!!')
 
             self.status = 'finished'
-            if self._macro.debug_mode:
-                self._macro.debug("data collector finished")
+            self._macro.report_debug("data collector finished")
 
         except Exception as err:
             self.status = 'finished'

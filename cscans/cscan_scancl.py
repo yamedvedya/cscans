@@ -6,6 +6,7 @@ Author yury.matveev@desy.de
 
 # general python imports
 import PyTango
+import os
 
 # Sardana imports
 
@@ -62,12 +63,14 @@ class scancl(Hookable):
         try:
             self.debug_mode = self.getEnv('cscan_debug')
             if self.debug_mode:
-                self.warning('ATTENTION! cscan_debug set to True!!! If you are not debuging now it is recommended to set it to False!!!!!')
+                self._debug_file_name = os.path.join(self.getEnv('ScanDir'),
+                                                     'debug_log_' + str(self.getEnv('ScanID')) + '.log')
+                self.warning('ATTENTION! cscan_debug set to True!')
+                self.info('The debug info will be printed to {}'.format(self._debug_file_name))
         except Exception as err:
             self.debug_mode = False
 
-        if self.debug_mode:
-            self.debug('SYNC mode {}'.format(self._sync))
+        self.report_debug('SYNC mode {}'.format(self._sync))
 
         if not self._sync and len(self.motors) > 1:
             options = YES_OPTIONS + NO_OPTIONS
@@ -164,9 +167,8 @@ class scancl(Hookable):
 
                     channel_names = [device.split('/')[-1].replace('.', '/') for device in tango_motors]
 
-                    if self.debug_mode:
-                        self.debug('tango_motors {}'.format(tango_motors))
-                        self.debug('channel_names {}'.format(channel_names))
+                    self.report_debug('tango_motors {}'.format(tango_motors))
+                    self.report_debug('channel_names {}'.format(channel_names))
 
                     _, real_start, real_finish, real_original = self._parse_dscan_pos(motor, start_pos, end_pos)
 
@@ -235,6 +237,13 @@ class scancl(Hookable):
             command += ' ' + ' '.join([motor.getName(), '{:.4f} {:.4f}'.format(float(start_pos), float(final_pos))])
         command += ' {} {}'.format(self.nsteps, self.integ_time)
         return command
+
+    # ----------------------------------------------------------------------
+    def report_debug(self, msg):
+        if self.debug_mode:
+            self.debug(msg)
+            with open(self._debug_file_name, 'a') as f:
+                f.write(str(msg) + '\n')
 
 # ----------------------------------------------------------------------
 class aNcscan(iMacro, scancl):

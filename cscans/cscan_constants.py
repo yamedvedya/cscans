@@ -13,7 +13,7 @@ DUMMY_MOTOR = 'exp_dmy01'
 YES_OPTIONS = ['Yes', 'yes', 'y']
 NO_OPTIONS = ['No', 'no', 'n']
 
-HKL_GRID_RESOLUTION = 0.1
+HKL_GRID_RESOLUTION = 0.02
 
 # Super ugly, should be better solution:
 counter_names = {'sis3820': 'p23/counter/eh'}

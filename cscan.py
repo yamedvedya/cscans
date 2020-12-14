@@ -236,9 +236,9 @@ class cscan_senv(Macro):
     """ Sets default environment variables """
 
     def run(self):
-        self.setEnv("LambdaDevice", "hasep23oh:10000/p23/lambda/01")
-        self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
-        self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuator")
+        self.setEnv("LambdaDevice", "p23/testlambda/testlambda")
+        self.setEnv("LambdaOnlineAnalysis", "p23/testlambda/testlambda")
+        self.setEnv("AttenuatorProxy", "p23/testlambda/testlambda")
         self.setEnv("cscan_sync", True)
         self.setEnv("cscan_timeme", False)
         self.setEnv("cscan_debug", False)

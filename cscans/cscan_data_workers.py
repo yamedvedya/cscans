@@ -59,8 +59,7 @@ class TimerWorker(object):
     def _main_loop(self):
         while not self._worker.stopped():
 
-            if self._macro.debug_mode:
-                self._macro.debug('Start timer point {}'.format(self._point + 1))
+            self._macro.report_debug('Start timer point {}'.format(self._point + 1))
 
             _start_position = None
             _position_time1 = None
@@ -94,9 +93,8 @@ class TimerWorker(object):
             self._timing_logger['Position_measurement'].append(_timing)
 
             if _position[0] == self.last_position:
-                if self._macro.debug_mode:
-                    self._macro.debug('Timer stops due to repeating positions {} == {}'.format(_position[0],
-                                                                                               self.last_position))
+                self._macro.report_debug('Timer stops due to repeating positions {} == {}'.format(_position[0],
+                                                                                           self.last_position))
                 break
 
             self._point += 1
@@ -194,8 +192,7 @@ class DataSourceWorker(object):
 
                     self._timing_logger[self._channel_label].append(time.time() - _start_time)
 
-                    if self._macro.debug_mode:
-                        self._macro.debug('{} point {} data {}'.format(self._channel_label, point_to_collect, data))
+                    self._macro.report_debug('{} point {} data {}'.format(self._channel_label, point_to_collect, data))
 
                 except empty_queue:
                     time.sleep(REFRESH_PERIOD)
@@ -234,6 +231,7 @@ class LambdaRoiWorker(object):
         self._timing_logger = timing_logger
 
         self.last_collected_point = -1
+        self.timeout = 0
 
         self._correction_needed = False
         self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('AttenuatorProxy'))
@@ -270,7 +268,7 @@ class LambdaRoiWorker(object):
                     _start_time = time.time()
                     self.data_buffer[point_to_collect] = {}
                     _success = False
-                    while time.time() - _start_time < TIMEOUT:
+                    while time.time() - _start_time < self.timeout:
                         if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
                             _data_to_print = {}
                             if self._correction_needed:
@@ -291,8 +289,7 @@ class LambdaRoiWorker(object):
 
                             self._timing_logger['Lambda'].append(time.time() - _start_time)
 
-                            if self._macro.debug_mode:
-                                self._macro.debug('Lambda point {} data {}'.format(point_to_collect, _data_to_print))
+                            self._macro.report_debug('Lambda point {} data {}'.format(point_to_collect, _data_to_print))
 
                             self.last_collected_point = point_to_collect
 
@@ -321,6 +318,10 @@ class LambdaRoiWorker(object):
         self._worker.stop()
         while self._worker.status != 'finished':
             time.sleep(REFRESH_PERIOD)
+
+    # ----------------------------------------------------------------------
+    def set_timeout(self, timeout):
+        self.timeout = timeout
 
 # ----------------------------------------------------------------------
 #                       Moving group position
@@ -384,8 +385,7 @@ class MovingGroupPosition(object):
             while device.state != "stopped":
                 time.sleep(REFRESH_PERIOD)
 
-        if self._macro.debug_mode:
-            self._macro.debug('MovingGroupPosition stopped')
+        self._macro.report_debug('MovingGroupPosition stopped')
 
 # ----------------------------------------------------------------------
 #                       Motor position

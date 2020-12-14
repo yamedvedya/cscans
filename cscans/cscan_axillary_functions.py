@@ -69,5 +69,5 @@ def get_real_coordinates(reciprocal):
     return [np.sin(reciprocal[0]), np.cos(reciprocal[0]),
             reciprocal[0], 2*np.sin(reciprocal[0])]
 
-def get_reciprocal_coordinates(real):
+def report_debugget_reciprocal_coordinates(real):
     return [np.arcsin(real[0]), 0, 0]

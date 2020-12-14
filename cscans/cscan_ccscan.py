@@ -78,7 +78,7 @@ class CCScan(CSScan):
         num_counters = 0
         _worker_triggers = []
         _lambda_trigger = []
-        _lambda_worker = None
+        self._lambda_worker = None
         _counters = []
 
         for ind, channel_info in enumerate(self.measurement_group.getChannelsEnabledInfo()):
@@ -91,8 +91,7 @@ class CCScan(CSScan):
                 self._has_lambda = True
                 self._original_trigger_mode, self._original_operating_mode = None, None
 
-        if self.macro.debug_mode:
-            self.macro.debug('Starting barrier for {} workers'.format(num_counters))
+        self.macro.report_debug('Starting barrier for {} workers'.format(num_counters))
         _workers_done_barrier = EndMeasurementBarrier(num_counters)
 
         self._error_queue = Queue()
@@ -100,8 +99,8 @@ class CCScan(CSScan):
         self._data_workers = []
 
         if self._has_lambda:
-            _lambda_worker = LambdaRoiWorker(_lambda_trigger[0], self._error_queue, self.macro, self._timing_logger)
-            self._data_workers.append(_lambda_worker)
+            self._lambda_worker = LambdaRoiWorker(_lambda_trigger[0], self._error_queue, self.macro, self._timing_logger)
+            self._data_workers.append(self._lambda_worker)
 
         #We start main data collector loop
         _data_collector_trigger = Queue()
@@ -119,7 +118,7 @@ class CCScan(CSScan):
 
             if 'lmbd' in channel_info.label:
                 if 'lmbd_countsroi' in channel_info.label or channel_info.label == 'lmbd':
-                    _lambda_worker.add_channel(channel_info)
+                    self._lambda_worker.add_channel(channel_info)
                 else:
                     raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
 
@@ -130,8 +129,7 @@ class CCScan(CSScan):
                                                            self._timing_logger))
                 ind += 1
 
-        if self.macro.debug_mode:
-            self.macro.debug("__init__ finished")
+        self.macro.report_debug("__init__ finished")
 
     # ----------------------------------------------------------------------
     def _setup_lambda(self, integ_time):
@@ -162,8 +160,7 @@ class CCScan(CSScan):
             self.macro.output(_lambda_proxy.State())
             raise RuntimeError('Cannot start LAMBDA')
 
-        if self.macro.debug_mode:
-            self.macro.debug('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
+        self.macro.report_debug('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
 
         _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
         if _lambdaonlineanalysis_proxy.State() == PyTango.DevState.MOVING:
@@ -174,8 +171,7 @@ class CCScan(CSScan):
         if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.MOVING:
                 raise RuntimeError('Cannot start LambdaOnlineAnalysis')
 
-        if self.macro.debug_mode:
-            self.macro.debug('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
+        self.macro.report_debug('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
 
      # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint):
@@ -183,8 +179,7 @@ class CCScan(CSScan):
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
 
-        if self.macro.debug_mode:
-            self.macro.debug("prepare_waypoint() entering...")
+        self.macro.report_debug("prepare_waypoint() entering...")
 
         travel_time = waypoint["integ_time"] * waypoint["npts"]
 
@@ -205,6 +200,8 @@ class CCScan(CSScan):
             except AttributeError:
                 raise RuntimeError("{} don't have velocity parameter, cscans is impossible".format(motor))
 
+
+
             # Find the cruise duration of motion at top velocity. For this
             # create a virtual motor which has instantaneous acceleration and
             # deceleration
@@ -217,9 +214,8 @@ class CCScan(CSScan):
 
             # recalculate cruise duration of motion at top velocity
             if motor_path.duration > self._acq_duration:
-                if self.macro.debug_mode:
-                    self.macro.debug(
-                        'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
+                self.macro.report_debug(
+                    'Ideal path duration: {}, requested duration: {}'.format(motor_path.duration, original_duration))
                 self.macro.warning(
                         'The required travel time cannot be reached due to {} motor cannot travel with such high speed'.format(
                             moveable.name))
@@ -231,6 +227,10 @@ class CCScan(CSScan):
         # now that we have the appropriate top velocity for all motors, the
         # cruise duration of motion at top velocity, and the time it takes to
         # recalculate
+        if not _can_be_synchro:
+            self.macro.error("Motion will not be coordinated")
+            self.macro._sync = False
+
         _reset_positions = False
         for path in self._motion_paths:
             vmotor = path.motor
@@ -248,7 +248,7 @@ class CCScan(CSScan):
 
                 try:
                     old_accel = motor.getAcceleration()
-                    accel_time =  old_accel* new_top_vel / old_top_velocity # to keep acceleration in steps
+                    accel_time = old_accel* new_top_vel / old_top_velocity # to keep acceleration in steps
                     self.macro.output('The acceleration of {} motor will be changed from {} to {}'.format(motor,
                                                                                                    old_accel,
                                                                                                    accel_time))
@@ -261,11 +261,6 @@ class CCScan(CSScan):
                     self.macro.output('The deceleration of {} motor will be changed from {} to {}'.format(motor,
                                                                                                    old_decel,
                                                                                                    decel_time))
-
-                    if not _can_be_synchro:
-                        self.macro.warning("{} motion will not be coordinated".format(motor))
-                        self.macro._sync = False
-
                 except AttributeError:
                     self.macro.warning("{} motion don't have acceleration/deceleration time".format(motor))
                     self.macro._sync = False
@@ -328,8 +323,7 @@ class CCScan(CSScan):
         """
         Internal, unprotected method to go through the different waypoints.
         """
-        if self.macro.debug_mode:
-            self.macro.debug("_go_through_waypoints() entering...")
+        self.macro.report_debug("_go_through_waypoints() entering...")
 
         # get integ_time for this loop
         if old_python:
@@ -342,20 +336,19 @@ class CCScan(CSScan):
 
         if self._has_lambda:
             self._setup_lambda(self._integration_time)
+            self._lambda_worker.set_timeout(self._integration_time)
 
         start_pos, final_pos = [], []
         for path in self._motion_paths:
             start_pos.append(path.initial_user_pos)
             final_pos.append(path.final_user_pos)
 
-        if self.macro.debug_mode:
-            self.macro.debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
+        self.macro.report_debug('Start pos: {}, final pos: {}'.format(start_pos, final_pos))
         if self.macro.isStopped():
             return
 
         # move to start position
-        if self.macro.debug_mode:
-            self.macro.debug("Moving to start position: {}".format(start_pos))
+        self.macro.report_debug("Moving to start position: {}".format(start_pos))
         self.motion.move(start_pos)
 
         if self.macro.isStopped():
@@ -375,8 +368,7 @@ class CCScan(CSScan):
         self.motion_event.set()
 
         # move to waypoint end position
-        if self.macro.debug_mode:
-            self.macro.debug("Moving to final position: {}".format(final_pos))
+        self.macro.report_debug("Moving to final position: {}".format(final_pos))
         self.motion.move(final_pos)
 
         self.motion_event.clear()
@@ -385,8 +377,7 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def scan_loop(self):
 
-        if self.macro.debug_mode:
-            self.macro.debug("scan loop() entering...")
+        self.macro.report_debug("scan loop() entering...")
 
         self._scan_in_process = True
 
@@ -407,14 +398,12 @@ class CCScan(CSScan):
         # self._motor_mover.start()
         manager.add_job(self.go_through_waypoints)
 
-        if self.macro.debug_mode:
-            self.macro.debug("waiting for motion event")
+        self.macro.report_debug("waiting for motion event")
         # wait for motor to reach start position
         self.motion_event.wait()
 
         # wait for motor to reach max velocity
-        if self.macro.debug_mode:
-            self.macro.debug("wait for motors to pass start point")
+        self.macro.report_debug("wait for motors to pass start point")
 
         if self._movement_direction:
             while self._main_motor.Position < self._position_start:
@@ -428,30 +417,31 @@ class CCScan(CSScan):
         self._timer_worker.start()
 
         #after first point generate triggers every integ_time
-        while self.motion_event.is_set() and not self._finished:
+        while self.motion_event.is_set():
 
             # allow scan to stop
             if self.macro.isStopped():
-                self._finished = True
+                break
 
             try:
                 err = self._error_queue.get(block=False)
             except empty_queue:
                 pass
             else:
-                if self.macro.debug_mode:
-                    self.macro.debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2].tb_lineno))
-                self._finished = True
+                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
+                                                                                          err[2].tb_lineno))
+                break
 
             if self._movement_direction:
-                self._finished = self._timer_worker.last_position >= self._position_stop
+                if self._timer_worker.last_position >= self._position_stop:
+                    break
             else:
-                self._finished = self._timer_worker.last_position <= self._position_stop
+                if self._timer_worker.last_position <= self._position_stop:
+                    break
 
-        if self.macro.debug_mode:
-            self.macro.debug('scan finished {} {} {}'.format(self._movement_direction,
-                                                             self._timer_worker.last_position,
-                                                             self._position_stop))
+        self.macro.report_debug('scan finished {} {} {}'.format(self._movement_direction,
+                                                         self._timer_worker.last_position,
+                                                         self._position_stop))
         self._finish_scan()
 
         yield 100
@@ -462,17 +452,15 @@ class CCScan(CSScan):
         # Get last started point and set it to data collector
         self._data_collector.set_last_point(self._timer_worker.stop())
 
-        if self.macro.debug_mode:
-            self.macro.debug("waiting for data collector finishes")
+        self.macro.report_debug("waiting for data collector finishes")
 
         _timeout_start_time = time.time()
         while time.time() < _timeout_start_time + TIMEOUT and self._data_collector.status != 'finished':
             time.sleep(self._integration_time)
 
         if self._data_collector.status != 'finished':
-            if self.macro.debug_mode:
-                self.macro.debug("Cannot stop DataCollector, waits for {}, collected {}".format(
-                    self._data_collector._stop_after, self._data_collector.last_collected_point))
+            self.macro.report_debug("Cannot stop DataCollector, waits for {}, collected {}".format(
+                self._data_collector._stop_after, self._data_collector.last_collected_point))
             self._data_collector.stop()
 
         for worker in self._data_workers:
@@ -490,8 +478,7 @@ class CCScan(CSScan):
         env['acqtime'] = self._data_collector.last_collected_point*self._integration_time
         env['delaytime'] = time.time() - env['acqtime']
 
-        if self.macro.debug_mode:
-            self.macro.debug("scan loop finished")
+        self.macro.report_debug("scan loop finished")
 
         self._scan_in_process = False
 
@@ -517,8 +504,7 @@ class CCScan(CSScan):
             np.savetxt(file_name, data_to_save, delimiter=';', newline='\n', header=header)
             self.macro.info('Detector timing log saved in {}'.format(file_name))
 
-        if self.macro.debug_mode:
-            self.macro.debug("_finish_scan() done")
+        self.macro.report_debug("_finish_scan() done")
 
         self.macro.flushOutput()
 
@@ -527,16 +513,13 @@ class CCScan(CSScan):
         if self._scan_in_process:
             self._finish_scan()
 
-        if self.macro.debug_mode:
-            self.macro.debug('Stopping motion')
+        self.macro.report_debug('Stopping motion')
         self.motion.stop()
-        if self.macro.debug_mode:
-            self.macro.debug('Resetting motors')
+        self.macro.report_debug('Resetting motors')
         self._restore_motors()
 
         if self._has_lambda:
-            if self.macro.debug_mode:
-                self.macro.debug('Stopping LambdaOnlineAnalysis')
+            self.macro.report_debug('Stopping LambdaOnlineAnalysis')
             _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
             _lambdaonlineanalysis_proxy.StopAnalysis()
             time.sleep(0.1)
@@ -548,8 +531,7 @@ class CCScan(CSScan):
             if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
                 self.macro.output('Cannot stop LambdaOnlineAnalysis!')
 
-            if self.macro.debug_mode:
-                self.macro.debug('Stopping Lambda')
+            self.macro.report_debug('Stopping Lambda')
 
             _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
             _lambda_proxy.StopAcq()
@@ -568,9 +550,7 @@ class CCScan(CSScan):
             if hasattr(self.macro, 'do_restore'):
                 self.macro.do_restore()
         except Exception:
-            msg = ("Failed to execute 'do_restore' method of the %s macro" %
-                   self.macro.getName())
-            if self.macro.debug_mode:
-                self.macro.debug(msg)
-                self.macro.debug('Details: ', exc_info=True)
+            msg = ("Failed to execute 'do_restore' method of the %s macro" % self.macro.getName())
+            self.macro.report_debug(msg)
+            self.macro.report_debug('Details: ', exc_info=True)
             raise ScanException('error while restoring a backup')

@@ -25,7 +25,6 @@ from sardana.util.motion import Motor as VMotor
 # cscan imports, always reloaded to track changes
 from cscans.cscan_ccscan import CCScan
 from cscans.cscan_movement_monitor import Status_Monitor
-from cscans.cscan_axillary_functions import get_real_coordinates
 
 from cscans.cscan_constants import *
 
@@ -43,15 +42,17 @@ class HklCScan(CCScan):
 
         self._command_lists = []
         self._start_positions = None
+        self._motors_with_movement = None
+        self._motion_monitor_motors = None
 
         # for motor in self._physical_moveables:
         #     for param in ['getBaseRate', 'getVelocity', 'getAcceleration', 'getName']:
         #         self.macro.output('{}: {}'.format(param, getattr(motor, param)()))
-        # self._go_through_waypoints()
+        self.prepare_waypoint(self.macro._step_info)
 
-        self.macro.output('moveables_trees {}'.format(self._moveables_trees))
-        self.macro.output('physical_motion {}'.format(self._physical_motion))
-        self.macro.output('physical_moveables {}'.format(self._physical_moveables))
+        # self.macro.output('moveables_trees {}'.format(self._moveables_trees))
+        # self.macro.output('physical_motion {}'.format(self._physical_motion))
+        # self.macro.output('physical_moveables {}'.format(self._physical_moveables))
         raise RuntimeError('Test run')
 
     # ----------------------------------------------------------------------
@@ -64,8 +65,7 @@ class HklCScan(CCScan):
             except AttributeError:
                 raise RuntimeError("{} don't have Acceleration parameter, cscans is impossible".format(motor))
 
-        if self.macro.debug_mode:
-            self.macro.debug('All motors acceleration will be set to {}'.format(accel))
+        self.macro.report_debug('All motors acceleration will be set to {}'.format(accel))
 
         for motor in self._physical_moveables:
             motor.Acceleration = accel
@@ -73,10 +73,8 @@ class HklCScan(CCScan):
     # ----------------------------------------------------------------------
     def _get_positions_for_hkl(self, hkl_values):
 
-        # self.macro.diffrac.write_attribute("computetrajectoriessim", hkl_values)
-        # return self.macro.diffrac.trajectorylist[0]
-
-        return get_real_coordinates(hkl_values)
+        self.macro.diffrac.write_attribute("computetrajectoriessim", hkl_values)
+        return self.macro.diffrac.trajectorylist[0]
 
     # ----------------------------------------------------------------------
     def _get_speed_for_dx(self, v_st, dx, dt, a):
@@ -98,7 +96,6 @@ class HklCScan(CCScan):
 
     # ----------------------------------------------------------------------
     def _calculate_speeds(self, trajectory, ideal_period):
-        # first get longest travel:
         real_period = ideal_period
         real_accels = np.zeros(trajectory.shape[1])
         for mot_ind, motor in enumerate(self._physical_moveables):
@@ -129,30 +126,44 @@ class HklCScan(CCScan):
                         motor.getName()))
                 real_period *= accel_correction
 
-        if self.macro.debug_mode:
-            self.macro.debug('ideal_period {} period {}'.format(ideal_period, real_period))
+        self.macro.report_debug('ideal_period {} period {}'.format(ideal_period, real_period))
 
         # calculate ideal start speed:
         _solution_found = False
         _attempt = 0
+        _motor_has_movement = [False for _ in range(len(self._physical_moveables))]
+        _movement_monitor = [True for _ in range(len(self._physical_moveables))]
+
         while not _solution_found and _attempt < 1000:
             _attempt += 1
             _solution_found = True
             calculated_speeds = np.zeros_like(trajectory)
+
             for mot_ind, motor in enumerate(self._physical_moveables):
-                calculated_speeds[1, mot_ind] = calculated_speeds[0, mot_ind] = \
-                    (trajectory[1, mot_ind] - trajectory[0, mot_ind]) / real_period
+                if np.abs(trajectory[1, mot_ind] - trajectory[0, mot_ind]) > 0:
+                    calculated_speeds[1, mot_ind] = calculated_speeds[0, mot_ind] = \
+                        np.abs((trajectory[1, mot_ind] - trajectory[0, mot_ind])) / real_period
+                    _motor_has_movement[mot_ind] = True
+                else:
+                    calculated_speeds[1, mot_ind] = calculated_speeds[0, mot_ind] = 0
+                    _movement_monitor[mot_ind] = False
+
                 for idx, dx in enumerate(np.diff(trajectory[1:, mot_ind])):
-                    _new_speed = self._get_speed_for_dx(calculated_speeds[idx + 1, mot_ind],
-                                                        np.abs(dx), real_period, real_accels[mot_ind])
-                    if np.isnan(_new_speed):
-                        _solution_found = False
-                        real_period *= 1.01
-                        if self.macro.debug_mode:
-                            self.macro.debug('Solution not found. Need to increase period to{}'.format(real_period))
-                        break
+                    if np.abs(dx) > 0:
+                        _motor_has_movement[mot_ind] = True
+                        _new_speed = self._get_speed_for_dx(calculated_speeds[idx + 1, mot_ind],
+                                                            np.abs(dx), real_period, real_accels[mot_ind])
+
+                        if np.isnan(_new_speed):
+                            _solution_found = False
+                            real_period *= 1.01
+                            self.macro.report_debug('Solution not found. Need to increase period to{}'.format(real_period))
+                            break
+                        else:
+                            calculated_speeds[idx + 2, mot_ind] = _new_speed
                     else:
-                        calculated_speeds[idx + 2, mot_ind] = _new_speed
+                        _movement_monitor = False
+                        calculated_speeds[idx + 2, mot_ind] = calculated_speeds[idx + 1, mot_ind]
 
         if not _solution_found:
             raise RuntimeError("Cannot find solution")
@@ -164,9 +175,10 @@ class HklCScan(CCScan):
             disp_sign = np.sign(trajectory[1, mot_ind] - trajectory[0, mot_ind])
 
             start_positions[mot_ind] = trajectory[0, mot_ind] - disp_sign * VMotor(min_vel=motor.getBaseRate(),
-                                                       max_vel=calculated_speeds[0, mot_ind],
-                                                       accel_time=motor.getAcceleration(),
-                                                       decel_time=1e-15).displacement_reach_max_vel
+                                                                                   max_vel=calculated_speeds[
+                                                                                       0, mot_ind],
+                                                                                   accel_time=motor.getAcceleration(),
+                                                                                   decel_time=1e-15).displacement_reach_max_vel
 
             if not self._check_motor_limits(motor, start_positions[mot_ind]):
                 raise RuntimeError(
@@ -174,15 +186,17 @@ class HklCScan(CCScan):
                         motor.getName()))
 
             end_positions[mot_ind] = trajectory[-1, mot_ind] + disp_sign * VMotor(min_vel=motor.getBaseRate(),
-                                                      max_vel=calculated_speeds[-1, mot_ind],
-                                                      accel_time=1e-15,
-                                                      decel_time=motor.getAcceleration()).displacement_reach_min_vel
+                                                                                  max_vel=calculated_speeds[
+                                                                                      -1, mot_ind],
+                                                                                  accel_time=1e-15,
+                                                                                  decel_time=motor.getAcceleration()).displacement_reach_min_vel
             if not self._check_motor_limits(motor, start_positions[mot_ind]):
                 raise RuntimeError(
                     'Cscan cannot be performed due to the stop overhead for {} is out of the limits'.format(
                         motor.getName()))
 
-        return calculated_speeds, start_positions, end_positions, real_period/ideal_period
+        return calculated_speeds, start_positions, end_positions, real_period / ideal_period, \
+               _motor_has_movement, _movement_monitor
 
     # ----------------------------------------------------------------------
     def prepare_waypoint(self, waypoint):
@@ -190,8 +204,7 @@ class HklCScan(CCScan):
         ### to fixed travel time, defined by waypoint['integ_time']*waypoint['npts']
         ### some variable were renamed to make code more readable
 
-        if self.macro.debug_mode:
-            self.macro.debug("prepare_waypoint() entering...")
+        self.macro.report_debug("prepare_waypoint() entering...")
 
         self._acq_duration = waypoint["integ_time"] * waypoint["npts"]
 
@@ -206,13 +219,12 @@ class HklCScan(CCScan):
         _hkl_trajectory[:, 1] = self.macro.k_device.position
         _hkl_trajectory[:, 2] = self.macro.l_device.position
 
-        column_map = {'h4c_h': 0, 'h4c_k': 1, 'h4c_l': 2}
+        column_map = {'e6c_h': 0, 'e6c_k': 1, 'e6c_l': 2}
 
         for motor, start, stop in zip(self.moveables, waypoint['start_positions'], waypoint['positions']):
             _hkl_trajectory[:, column_map[motor.name]] = np.linspace(start, stop, n_steps)
 
-        if self.macro.debug_mode:
-            self.macro.debug(_hkl_trajectory)
+        # self.macro.report_debug(_hkl_trajectory)
 
         _real_trajectory = np.zeros((n_steps, self.macro.nb_motors))
         column_map = {}
@@ -226,18 +238,19 @@ class HklCScan(CCScan):
             for _coordinate, _key in zip(_point, _point_device_keys):
                 _real_trajectory[step, column_map[_key]] = _coordinate
 
-        if self.macro.debug_mode:
-            self.macro.debug('_real_trajectory: {}'.format(_real_trajectory))
+        # self.macro.report_debug('_real_trajectory: {}'.format(_real_trajectory))
 
-        calculated_speeds, self._start_positions, end_positions, integration_time_correction =\
+        calculated_speeds, self._start_positions, end_positions, integration_time_correction, \
+        self._motors_with_movement, self._motion_monitor_motors = \
             self._calculate_speeds(_real_trajectory, self._acq_duration / n_steps)
 
         self._integration_time = waypoint["integ_time"] * integration_time_correction
 
-        for ind in range(len(self.moveables)):
+        for ind, _ in enumerate(self._physical_moveables):
             cmd = ["slew: {}, position: {}".format(slew_rate, position) for slew_rate, position in
                     zip(calculated_speeds[:, ind], _real_trajectory[:, ind])]
-            cmd.append("slew: {}, position: {}".format(calculated_speeds[-1, ind], end_positions))
+            cmd.append("slew: {}, position: {}".format(calculated_speeds[-1, ind], end_positions[ind]))
+
             self._command_lists.append(cmd)
 
         self._position_start = _real_trajectory[0, 0]
@@ -249,8 +262,7 @@ class HklCScan(CCScan):
         """
         Internal, unprotected method to go through the different waypoints.
         """
-        if self.macro.debug_mode:
-            self.macro.debug("_go_through_waypoints() entering...")
+        self.macro.report_debug("_go_through_waypoints() entering...")
 
         for _, waypoint in self.steps:
 
@@ -274,8 +286,7 @@ class HklCScan(CCScan):
                 return
 
             # move to start position
-            if self.macro.debug_mode:
-                self.macro.debug("Moving to start position: {}".format(self._start_positions))
+            self.macro.report_debug("Moving to start position: {}".format(self._start_positions))
             self._physical_motion.move(self._start_positions)
 
             _motor_proxies = [PyTango.DeviceProxy(motor.TangoDevice) for motor in self._physical_moveables]
@@ -289,8 +300,7 @@ class HklCScan(CCScan):
             self.motion_event.set()
 
             # move to waypoint end position
-            if self.macro.debug_mode:
-                self.macro.debug("Start moving")
+            self.macro.report_debug("Start moving")
 
             _movement_monitor.start()
 
