@@ -19,4 +19,5 @@
 !cscans/cscan_data_workers.py
 !cscans/cscan_hklcscan.py
 !cscans/cscan_scancl.py
+!cscans/cscan_movement_monitor.py
 !lms.py
