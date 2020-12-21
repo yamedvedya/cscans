@@ -24,7 +24,7 @@ import cscans.cscan_data_collector; reload(cscans.cscan_data_collector)
 import cscans.cscan_ccscan; reload(cscans.cscan_ccscan)
 import cscans.cscan_hklcscan; reload(cscans.cscan_hklcscan)
 import cscans.cscan_scancl; reload(cscans.cscan_scancl)
-import cscans.cscan_movement_monitor; reload(cscans.cscan_movement_monitor)
+# import cscans.cscan_movement_monitor; reload(cscans.cscan_movement_monitor)
 
 from cscans.cscan_scancl import aNcscan
 from cscans.cscan_constants import *

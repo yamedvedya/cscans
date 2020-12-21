@@ -421,6 +421,7 @@ class CCScan(CSScan):
 
             # allow scan to stop
             if self.macro.isStopped():
+                self.macro.report_debug('finishing scan due to Stop siganl')
                 break
 
             try:
@@ -552,5 +553,4 @@ class CCScan(CSScan):
         except Exception:
             msg = ("Failed to execute 'do_restore' method of the %s macro" % self.macro.getName())
             self.macro.report_debug(msg)
-            self.macro.report_debug('Details: ', exc_info=True)
             raise ScanException('error while restoring a backup')

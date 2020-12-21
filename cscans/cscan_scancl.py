@@ -7,6 +7,7 @@ Author yury.matveev@desy.de
 # general python imports
 import PyTango
 import os
+import sys
 
 # Sardana imports
 
@@ -64,7 +65,7 @@ class scancl(Hookable):
             self.debug_mode = self.getEnv('cscan_debug')
             if self.debug_mode:
                 self._debug_file_name = os.path.join(self.getEnv('ScanDir'),
-                                                     'debug_log_' + str(self.getEnv('ScanID')) + '.log')
+                                                     'debug_log_' + '{:05d}'.format(self.getEnv('ScanID')+1) + '.log')
                 self.warning('ATTENTION! cscan_debug set to True!')
                 self.info('The debug info will be printed to {}'.format(self._debug_file_name))
         except Exception as err:
@@ -252,8 +253,12 @@ class aNcscan(iMacro, scancl):
         self._gScan.prepare_waypoint(self._step_info)
 
         if self.do_scan:
-            for step in self._gScan.step_scan():
-                yield step
+            try:
+                for step in self._gScan.step_scan():
+                    yield step
+            except Exception as err:
+                self.report_debug('Got error: {} {}'.format(sys.exc_info()[0], sys.exc_info()[2]))
+
 
     def getCommand(self):
         return self._get_command('a')

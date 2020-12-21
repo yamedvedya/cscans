@@ -24,7 +24,7 @@ from sardana.util.motion import Motor as VMotor
 
 # cscan imports, always reloaded to track changes
 from cscans.cscan_ccscan import CCScan
-from cscans.cscan_movement_monitor import Status_Monitor
+# from cscans.cscan_movement_monitor import Status_Monitor
 
 from cscans.cscan_constants import *
 
