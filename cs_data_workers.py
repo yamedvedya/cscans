@@ -1,6 +1,6 @@
 '''
 This file contains classes performing DDG timer operation and the acquisition of individual measurement channels.
-There are 3 acquisition classes: for "instant" tango device, for the LambdaRoiAnalysis and fake Lambda answer generator
+There are 2 acquisition classes: for "instant" tango device and for the Lambda
 
 Author yury.matveev@desy.de
 '''
@@ -9,18 +9,15 @@ Author yury.matveev@desy.de
 import PyTango
 import time
 import sys
-import numpy as np
 
 if sys.version_info.major >= 3:
-    from queue import Queue
     from queue import Empty as empty_queue
 else:
-    from Queue import Queue
     from Queue import Empty as empty_queue
 
 # cscan imports
-from cscans.cscan_axillary_functions import ExcThread, EndMeasurementBarrier
-from cscans.cscan_constants import *
+from cs_axillary_functions import ExcThread, get_tango_device
+from cs_constants import *
 
 # ----------------------------------------------------------------------
 #                       Timer class
@@ -29,7 +26,7 @@ from cscans.cscan_constants import *
 
 class TimerWorker(object):
     def __init__(self, timer_name, error_queue, triggers, data_collector_trigger,
-                 workers_done_barrier, macro, motors_list, timing_logger):
+                 workers_done_barrier, macro, movement, timing_logger):
         #parameters:
         # timer_name: tango name of timer
         # error_queue: queue to report about problems
@@ -43,83 +40,97 @@ class TimerWorker(object):
         self._triggers = triggers
         self._workers_done_barrier = workers_done_barrier
         self._macro = macro
-        self._position_measurement = MovingGroupPosition(motors_list, macro, error_queue)
+        self._movement = movement
         # self._motors_devices = [PyTango.DeviceProxy(mot.TangoDevice) for mot in motors_list]
 
         self._data_collector_trigger = data_collector_trigger
         self._time_timer = []
         self._time_acq = []
 
-        self.last_position = None
+        self._paused = False
+
         self._timing_logger = timing_logger
 
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
-        while not self._worker.stopped():
+        _acq_start_time = time.time()
+        try:
+            _last_position = self._movement.get_main_motor_position()
+            while not self._worker.stopped():
 
-            self._macro.report_debug('Start timer point {}'.format(self._point + 1))
+                if not self._paused:
+                    self._macro.report_debug('Start timer point {}'.format(self._point + 1))
 
-            _start_position = None
-            _position_time1 = None
-            _end_position = None
-            _position_time2 = None
+                    _start_position = None
+                    _position_time1 = None
+                    _end_position = None
+                    _position_time2 = None
 
-            if MOTORS_POSITION_LOGIC in ['before', 'center']:
-                _start_time = time.time()
-                _start_position = self._position_measurement.get_motors_position()
-                _position_time1 = time.time() - _start_time
+                    if MOTORS_POSITION_LOGIC in ['before', 'center']:
+                        _start_time = time.time()
+                        _start_position = self._movement.get_motors_position()
+                        _position_time1 = time.time() - _start_time
 
-            _start_time = time.time()
-            self._device_proxy.StartAndWaitForTimer()
-            self._timing_logger['Timer'].append(time.time() - _start_time)
+                    _start_time = time.time()
+                    self._device_proxy.StartAndWaitForTimer()
+                    self._timing_logger['Timer'].append(time.time() - _start_time)
 
-            if MOTORS_POSITION_LOGIC in ['center', 'after']:
-                _start_time = time.time()
-                _end_position = self._position_measurement.get_motors_position()
-                _position_time2 = time.time() - _start_time
+                    if MOTORS_POSITION_LOGIC in ['center', 'after']:
+                        _start_time = time.time()
+                        _end_position = self._movement.get_motors_position()
+                        _position_time2 = time.time() - _start_time
 
-            if MOTORS_POSITION_LOGIC == 'before':
-                _position = _start_position
-                _timing = _position_time1
-            elif MOTORS_POSITION_LOGIC == 'center':
-                _position = (_start_position + _end_position)/2
-                _timing = _position_time1 + _position_time2
-            else:
-                _position = _end_position
-                _timing = _position_time2
+                    if MOTORS_POSITION_LOGIC == 'before':
+                        _position = _start_position
+                        _timing = _position_time1
+                    elif MOTORS_POSITION_LOGIC == 'center':
+                        _position = (_start_position + _end_position)/2
+                        _timing = _position_time1 + _position_time2
+                    else:
+                        _position = _end_position
+                        _timing = _position_time2
 
-            self._timing_logger['Position_measurement'].append(_timing)
+                    self._timing_logger['Position_measurement'].append(_timing)
 
-            if _position[0] == self.last_position:
-                self._macro.report_debug('Timer stops due to repeating positions {} == {}'.format(_position[0],
-                                                                                           self.last_position))
-                break
+                    if self._movement.get_main_motor_position() == _last_position:
+                        self._macro.report_debug('Timer stops due to repeating position {}'.format(_last_position))
+                        break
 
-            self._point += 1
-            self.last_position = _position[0]
+                    self._point += 1
+                    _last_position = self._movement.get_main_motor_position()
 
-            _start_time2 = time.time()
-            self._data_collector_trigger.put([self._point, time.time(), _position])
+                    _start_time2 = time.time()
+                    self._data_collector_trigger.put([self._point, time.time() - _acq_start_time, _position])
 
-            for trigger in self._triggers:
-                trigger.put(self._point)
-            self._workers_done_barrier.wait()
+                    for trigger in self._triggers:
+                        trigger.put(self._point)
 
-            self._timing_logger['Data_collection'].append(time.time() - _start_time2)
-            self._timing_logger['Point_dead_time'].append(time.time() - _start_time)
+                    while not self._workers_done_barrier.wait(False) and not self._worker.stopped():
+                        time.sleep(REFRESH_PERIOD)
 
-        self._position_measurement.close()
+                    self._timing_logger['Data_collection'].append(time.time() - _start_time2)
+                    self._timing_logger['Point_dead_time'].append(time.time() - _start_time)
+                else:
+                    time.sleep(REFRESH_PERIOD)
+
+        except Exception as err:
+            self._macro.error('Timer error: {}'.format(err))
+            raise
 
     # ----------------------------------------------------------------------
-    def set_start_position(self):
-        self.last_position = self._position_measurement.get_motors_position()[0]
+    def pause(self):
+        self._paused = True
+
+    # ----------------------------------------------------------------------
+    def resume(self):
+        self._paused = False
 
     # ----------------------------------------------------------------------
     def stop(self):
         self._worker.stop()
-        while self._worker.status != 'finished':
+        while self._worker.status == 'running':
             time.sleep(REFRESH_PERIOD)
         return self._point
 
@@ -137,7 +148,7 @@ class TimerWorker(object):
 # ----------------------------------------------------------------------
 
 class DataSourceWorker(object):
-    def __init__(self, source_info, trigger, workers_done_barrier, error_queue, macro, timing_logger):
+    def __init__(self, my_id, source_info, trigger, workers_done_barrier, error_queue, macro, timing_logger):
         # arguments:
         # index = worker index
         # channel_info - channels information from measurement group
@@ -146,6 +157,7 @@ class DataSourceWorker(object):
         # error_queue - queue to report problems
         # macro - link to marco
 
+        self._my_id = my_id
         self._source_info = source_info
         self._trigger = trigger
         self._macro = macro
@@ -164,10 +176,9 @@ class DataSourceWorker(object):
         self._channel_label = source_info.label
 
         self._is_counter = False
-        for counter_name, tango_name in counter_names.items():
+        for counter_name in counter_names:
             if counter_name in source_info.full_name:
-                self._counter_proxy = PyTango.DeviceProxy('{}.{:02d}'.format(tango_name,
-                                                                             int(source_info.full_name.split('/')[-1])))
+                self._counter_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
                 self._counter_proxy.Reset()
                 self._is_counter = True
 
@@ -187,7 +198,7 @@ class DataSourceWorker(object):
                     self.data_buffer[point_to_collect][self.channel_name] = data
                     if self._is_counter:
                         self._counter_proxy.Reset()
-                    self._workers_done_barrier.report()
+                    self._workers_done_barrier.report(self._my_id)
                     self.last_collected_point = point_to_collect
 
                     self._timing_logger[self._channel_label].append(time.time() - _start_time)
@@ -208,7 +219,7 @@ class DataSourceWorker(object):
     # ----------------------------------------------------------------------
     def stop(self):
         self._worker.stop()
-        while self._worker.status != 'finished':
+        while self._worker.status == 'running':
             time.sleep(REFRESH_PERIOD)
 
 # ----------------------------------------------------------------------
@@ -265,6 +276,7 @@ class LambdaRoiWorker(object):
             while not self._worker.stopped():
                 try:
                     point_to_collect = self._trigger.get(block=False)
+                    self._macro.report_debug('Lambda tigger {}'.format(point_to_collect))
                     _start_time = time.time()
                     self.data_buffer[point_to_collect] = {}
                     _success = False
@@ -316,116 +328,9 @@ class LambdaRoiWorker(object):
     # ----------------------------------------------------------------------
     def stop(self):
         self._worker.stop()
-        while self._worker.status != 'finished':
+        while self._worker.status == 'running':
             time.sleep(REFRESH_PERIOD)
 
     # ----------------------------------------------------------------------
     def set_timeout(self, timeout):
         self.timeout = timeout
-
-# ----------------------------------------------------------------------
-#                       Moving group position
-# ----------------------------------------------------------------------
-
-# ----------------------------------------------------------------------
-class Motion_Monitor(object):
-    def __init__(self, motors_list, diffractometer, macro, error_queue):
-        super(Motion_Monitor, self).__init__()
-
-        self._position_measurement = MovingGroupPosition(motors_list, macro, error_queue)
-        self._macro = macro
-        self._real_positions = None
-        self._reciprocal_positions = None
-        self._worker = ExcThread(self._main_loop, 'motion_monitor', error_queue)
-
-    def _main_loop(self):
-        try:
-            self._real_positions = self._position_measurement.get_motors_position()
-            while not self._worker.stopped():
-                positions = self._position_measurement.get_motors_position()
-                self._real_positions.append(positions)
-
-        except Exception as err:
-            self._macro.error('Lambda worker error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
-            raise err
-
-
-# ----------------------------------------------------------------------
-class MovingGroupPosition(object):
-    def __init__(self, motors_list, macro, error_queue):
-
-        self._macro = macro
-
-        if MOTORS_POSITION_MODE == 'sync':
-            self._motors_reported_barrier = EndMeasurementBarrier(len(motors_list))
-            self._motor_triggers = [Queue() for _ in motors_list]
-            self._devices = [MotorPosition(motor, trigger, self._motors_reported_barrier, error_queue)
-                             for motor, trigger in zip(motors_list, self._motor_triggers)]
-        else:
-            self._devices = []
-            for motor in motors_list:
-                try:
-                    self._devices.append(PyTango.DeviceProxy(motor.TangoDevice))
-                except:
-                    self._devices.append(motor)
-
-    # ----------------------------------------------------------------------
-    def get_motors_position(self):
-        if MOTORS_POSITION_MODE == 'sync':
-            for ind, trigger in enumerate(self._motor_triggers):
-                trigger.put(ind)
-            self._motors_reported_barrier.wait()
-
-        return np.array([device.position for device in self._devices])
-
-    # ----------------------------------------------------------------------
-    def close(self):
-        for device in self._devices:
-            device.stop()
-            while device.state != "stopped":
-                time.sleep(REFRESH_PERIOD)
-
-        self._macro.report_debug('MovingGroupPosition stopped')
-
-# ----------------------------------------------------------------------
-#                       Motor position
-# ----------------------------------------------------------------------
-
-
-class MotorPosition(object):
-
-    def __init__(self, motor, trigger, motors_reported_barrier, error_queue):
-
-        self._trigger = trigger
-        try:
-            self._device_proxy = PyTango.DeviceProxy(motor.TangoDevice)
-            name = self._device_proxy.name()
-        except:
-            self._device_proxy = motor
-            name = self._device_proxy.name
-
-        self._motors_reported_barrier = motors_reported_barrier
-
-        self.position = None
-
-        self.state = 'idle'
-
-        self._worker = ExcThread(self._main_loop, name, error_queue)
-        self._worker.start()
-
-    # ----------------------------------------------------------------------
-    def _main_loop(self):
-        self.state = 'running'
-        while not self._worker.stopped():
-            try:
-                ind = self._trigger.get(block=False)
-                self.position = self._device_proxy.Position
-                self._motors_reported_barrier.report()
-            except empty_queue:
-                time.sleep(REFRESH_PERIOD)
-
-        self.state = 'stopped'
-
-    # ----------------------------------------------------------------------
-    def stop(self):
-        self._worker.stop()

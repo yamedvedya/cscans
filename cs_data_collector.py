@@ -14,8 +14,8 @@ else:
     from Queue import Empty as empty_queue
 
 # cscan imports
-from cscans.cscan_axillary_functions import ExcThread
-from cscans.cscan_constants import *
+from cs_axillary_functions import ExcThread
+from cs_constants import *
 
 # ----------------------------------------------------------------------
 #
@@ -24,24 +24,22 @@ from cscans.cscan_constants import *
 class DataCollectorWorker(object):
 
     def __init__(self, macro, data_workers, point_trigger, error_queue,
-                 extra_columns, moveables, data):
+                 extra_columns, motor_names, data):
 
         self._data_collector_status = 'idle'
         self._last_started_point = -1
-        self.acq_start_time = None
 
         self._macro = macro
         self._data_workers = data_workers
         self._point_trigger = point_trigger
 
-        self._moveables = moveables
+        self._motor_names = motor_names
 
         self._extra_columns = extra_columns
         self._data = data
         self._step_info = None
         self.last_collected_point = -1
         self._stop_after = 1e15
-
 
         self._worker = ExcThread(self._data_collector_loop, 'data_collector', error_queue)
         self.status = 'waiting'
@@ -55,7 +53,7 @@ class DataCollectorWorker(object):
             self._data_collector_status = 'running'
             while not self._worker.stopped() and self.last_collected_point < self._stop_after:
                 try:
-                    _last_started_point, _end_time, _motor_position = self._point_trigger.get(block=False)
+                    _last_started_point, _end_time, _motor_positions = self._point_trigger.get(block=False)
                 except empty_queue:
                     self.status = 'waiting'
                     time.sleep(0.1)
@@ -85,22 +83,10 @@ class DataCollectorWorker(object):
 
                             # Add final moveable positions
                             data_line['point_nb'] = _last_started_point
-                            data_line['timestamp'] = _end_time - self.acq_start_time
+                            data_line['timestamp'] = _end_time
 
-                            if self._macro.space == 'reciprocal':
-                                if self.nb_motors != 7:
-                                    angles = ['mu', 'theta', 'chi', 'phi', 'gamma', 'delta']
-                                else:
-                                    angles = ['omega_t', 'mu', 'theta', 'chi', 'phi', 'gamma', 'delta']
-
-                                # self._macro.diffrac.write_attribute("computehkl", angles)
-                                # _motor_position = self._macro.diffrac.computehkl
-
-                                _motor_position = get_reciprocal_coordinates(_motor_position)
-
-
-                            for i, m in enumerate(self._moveables):
-                                data_line[m.moveable.getName()] = _motor_position[i]
+                            for name, position in zip(self._motor_names, _motor_positions):
+                                data_line[name] = position
 
                             # Add extra data coming in the step['extrainfo'] dictionary
                             if 'extrainfo' in self._step_info:
@@ -126,16 +112,15 @@ class DataCollectorWorker(object):
         self._step_info = step_info
 
     # ----------------------------------------------------------------------
-    def set_acq_start_time(self, acq_start_time):
-
-        self.acq_start_time = acq_start_time
-
-    # ----------------------------------------------------------------------
     def stop(self):
         self._worker.stop()
-        while self._worker.status != 'finished':
+        while self._worker.status == 'running':
             time.sleep(REFRESH_PERIOD)
 
     # ----------------------------------------------------------------------
     def set_last_point(self, point_num):
         self._stop_after = point_num
+
+    # ----------------------------------------------------------------------
+    def is_finished(self):
+        return self._worker.status == 'finished'
