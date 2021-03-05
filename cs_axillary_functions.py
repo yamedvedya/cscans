@@ -1,5 +1,5 @@
 '''
-This file contains axillary functions for continuous scans scripts.
+This file contains axillary cscans for continuous scans scripts.
 
 Author yury.matveev@desy.de
 '''

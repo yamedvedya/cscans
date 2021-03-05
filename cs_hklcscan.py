@@ -7,7 +7,7 @@ Author yury.matveev@desy.de
 # general python imports
 import numpy as np
 
-# cscan imports, always reloaded to track changes
+# cscans imports, always reloaded to track changes
 from cs_ccscan import CCScan
 from cs_constants import *
 
@@ -139,7 +139,7 @@ class HklCScan(CCScan):
                 try:
                     motor_accel = motor.getAcceleration()
                 except AttributeError:
-                    raise RuntimeError("{} don't have Acceleration parameter, cscan is impossible".format(motor))
+                    raise RuntimeError("{} don't have Acceleration parameter, cscans is impossible".format(motor))
                 real_accels[mot_ind] = motor_vel / motor_accel
 
                 if not linear:

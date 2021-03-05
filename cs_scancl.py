@@ -14,7 +14,7 @@ from sardana.macroserver.macro import iMacro, Hookable
 from sardana.macroserver.macros.scan import getCallable, UNCONSTRAINED
 from sardana.macroserver.scan.scandata import MoveableDesc
 
-# cscan imports
+# cscans imports
 from cs_ccscan import CCScan
 from cs_hklcscan import HklCScan
 from cs_constants import *
@@ -144,7 +144,7 @@ class CscanClass(Hookable):
     # ----------------------------------------------------------------------
     def _parse_motors(self, motor, start_pos, end_pos):
 
-    ### This functions check whether the motors are VmMotors.
+    ### This cscans check whether the motors are VmMotors.
     # In that case we need to split it to real motors and recalculate the start and stop positions for each motor
 
         try:
@@ -194,7 +194,7 @@ class CscanClass(Hookable):
 
                     return motors, new_start_pos, new_end_pos
                 except:
-                    raise RuntimeError('Cannot parse {} to components, the cscan cannot be executed'.format(motor.getName()))
+                    raise RuntimeError('Cannot parse {} to components, the cscans cannot be executed'.format(motor.getName()))
             else:
                 return self._parse_dscan_pos(motor, start_pos, end_pos)
         except AttributeError:
@@ -229,8 +229,8 @@ class CscanClass(Hookable):
         # general function that prints debug information
         if self.debug_mode:
             self.debug(msg)
-            with open(self._debug_file_name, 'a') as f:
-                f.write(str(msg) + '\n')
+            # with open(self._debug_file_name, 'a') as f:
+            #     f.write(str(msg) + '\n')
 
     # ----------------------------------------------------------------------
     def ask_user(self, msg):

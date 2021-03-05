@@ -32,12 +32,12 @@ else:
     from Queue import Queue
     from Queue import Empty as empty_queue
 
-# cscan imports
+# cscans imports
 from cs_axillary_functions import ExcThread, EndMeasurementBarrier, send_movevvc_command
 from cs_constants import *
 
 
-class Movement(object):
+class AbstractMovement(object):
 
     def __init__(self, macro, motors_list, movable_names, error_queue):
 
@@ -188,7 +188,7 @@ class Movement(object):
         self._macro.report_debug('MovingGroupPosition stopped')
 
 # ----------------------------------------------------------------------
-class ParallelMovement(Movement):
+class ParallelMovement(AbstractMovement):
 
     ### In case of ParallelMovement we try to do inout in parallel.
     # To do it we start a MotorWorker for each motor and send our requests them
@@ -276,7 +276,7 @@ class ParallelMovement(Movement):
         super(ParallelMovement, self).close()
 
 # ---------------------------------------------------------------------
-class SerialMovement(Movement):
+class SerialMovement(AbstractMovement):
 
     def __init__(self, macro, motors_list, movable_names, error_queue):
         super(SerialMovement, self).__init__(macro, motors_list, movable_names, error_queue)

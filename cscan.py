@@ -23,16 +23,26 @@ sys.path.append(os.path.dirname(__file__))
 from sardana.macroserver.macro import Macro, Type
 from sardana.macroserver.macros.hkl import _diffrac
 
-# cscan imports, always reloaded to track changes; ORDER IS IMPORTANT!!!!
-import cs_constants; reload(cs_constants)
-import cs_axillary_functions; reload(cs_axillary_functions)
-import cs_movement; reload(cs_movement)
-import cs_pilc_workers; reload(cs_pilc_workers)
-import cs_data_workers; reload(cs_data_workers)
-import cs_data_collector; reload(cs_data_collector)
-import cs_ccscan; reload(cs_ccscan)
-import cs_hklcscan; reload(cs_hklcscan)
-import cs_scancl; reload(cs_scancl)
+# cscans imports, always reloaded to track changes; ORDER IS IMPORTANT!!!!
+import cs_scancl
+import cs_pilc_workers
+import cs_axillary_functions
+import cs_data_workers
+import cs_data_collector
+import cs_hklcscan
+import cs_movement
+import cs_ccscan
+import cs_constants
+
+reload(cs_constants)
+reload(cs_axillary_functions)
+reload(cs_movement)
+reload(cs_pilc_workers)
+reload(cs_data_workers)
+reload(cs_data_collector)
+reload(cs_ccscan)
+reload(cs_hklcscan)
+reload(cs_scancl)
 
 from cs_scancl import aNcscan
 from cs_constants import *
@@ -68,6 +78,8 @@ class acscan(aNcscan):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'ascan'
 
         self._prepare('ascan', 'real', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
@@ -99,6 +111,8 @@ class dcscan(aNcscan):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'dscan'
 
         self._prepare('dscan', 'real', [motor], np.array([start_pos], dtype='d'), np.array([final_pos], dtype='d'),
@@ -129,6 +143,8 @@ class a2cscan(aNcscan):
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'a2scan'
 
         self._prepare('ascan', 'real', [motor1, motor2], np.array([start_pos1, start_pos2], dtype='d'),
@@ -158,6 +174,8 @@ class d2cscan(aNcscan):
 
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
+
+        _reload()
 
         self.name = 'd2scan'
 
@@ -195,7 +213,10 @@ class hcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'hscan'
+
         _diffrac.prepare(self)
 
         self._prepare('ascan', 'reciprocal', [self.h_device], np.array([start_pos], dtype='d'),
@@ -227,7 +248,10 @@ class hdcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'hscan'
+
         _diffrac.prepare(self)
 
         self._prepare('dscan', 'reciprocal', [self.h_device], np.array([start_pos], dtype='d'),
@@ -259,7 +283,10 @@ class lcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'lscan'
+
         _diffrac.prepare(self)
 
         self._prepare('ascan', 'reciprocal', [self.l_device], np.array([start_pos], dtype='d'),
@@ -291,7 +318,10 @@ class ldcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'lscan'
+
         _diffrac.prepare(self)
 
         self._prepare('dscan', 'reciprocal', [self.l_device], np.array([start_pos], dtype='d'),
@@ -355,7 +385,10 @@ class kdcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'kscan'
+
         _diffrac.prepare(self)
 
         self._prepare('dscan', 'reciprocal', [self.k_device], np.array([start_pos], dtype='d'),
@@ -392,7 +425,10 @@ class hklcscan(aNcscan, _diffrac):
     def prepare(self, h_start_pos, h_stop_pos, k_start_pos, k_stop_pos,
                 l_start_pos, l_stop_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'hklscan'
+
         _diffrac.prepare(self)
 
         self._prepare('ascan', 'reciprocal', [self.h_device, self.k_device, self.l_device],
@@ -430,7 +466,10 @@ class hkldcscan(aNcscan, _diffrac):
     def prepare(self, h_start_pos, h_stop_pos, k_start_pos, k_stop_pos,
                 l_start_pos, l_stop_pos, nb_steps, integ_time, **opts):
 
+        _reload()
+
         self.name = 'hklscan'
+
         _diffrac.prepare(self)
 
         self._prepare('dscan', 'reciprocal', [self.h_device, self.k_device, self.l_device],
@@ -456,6 +495,8 @@ class ctscan(aNcscan):
 
     def prepare(self, total_time, integ_time, **opts):
 
+        _reload()
+
         self.name = 'ctscan'
 
         motor = self.getMotor(DUMMY_MOTOR)
@@ -479,11 +520,25 @@ class cscan_senv(Macro):
     """ Sets default environment variables """
 
     def run(self):
-        self.setEnv("LambdaDevice", "p23/testlambda/testlambda")
-        self.setEnv("LambdaOnlineAnalysis", "p23/testlambda/testlambda")
-        self.setEnv("AttenuatorProxy", "p23/testlambda/testlambda")
+        self.setEnv("LambdaDevice", "p23/lambdactrl/01")
+        self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
+        self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
         self.setEnv("cscan_sync", True)
         self.setEnv("cscan_timeme", False)
         self.setEnv("cscan_debug", False)
         self.setEnv("cscan_monitor", False)
 
+# ----------------------------------------------------------------------
+#                       Auxiliary function
+# ----------------------------------------------------------------------
+
+def _reload():
+    reload(cs_constants)
+    reload(cs_axillary_functions)
+    reload(cs_movement)
+    reload(cs_pilc_workers)
+    reload(cs_data_workers)
+    reload(cs_data_collector)
+    reload(cs_ccscan)
+    reload(cs_hklcscan)
+    reload(cs_scancl)

@@ -26,7 +26,7 @@ else:
 from sardana.macroserver.macro import macro
 from sardana.macroserver.scan import CSScan
 
-# cscan imports, always reloaded to track changes
+# cscans imports, always reloaded to track changes
 
 from cs_axillary_functions import EndMeasurementBarrier, ExcThread, CannotDoPilc, get_tango_device
 from cs_pilc_workers import PILCWorker
@@ -267,6 +267,7 @@ class CCScan(CSScan):
                         self.movement.setup_main_motor(idx)
                         self._movement_direction = np.sign(final_position-start_position)
                         self._pos_start_measurements = start_position
+                        monitor_motor_speed = new_speed[-1]
                         self._pos_stop_measurements = final_position
                 self.macro.output('Calculated speed for {} is {}'.format(motor.name, new_speed[idx]))
             else:
@@ -318,6 +319,7 @@ class CCScan(CSScan):
 
         _integration_time_correction = travel_time/(waypoint["integ_time"] * waypoint["npts"])
         self._integration_time = waypoint["integ_time"] * _integration_time_correction
+        self._pos_start_measurements -= self._movement_direction * monitor_motor_speed * self._integration_time/2
         if _integration_time_correction > 1:
             self.macro.warning(
                 'Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
@@ -480,7 +482,6 @@ class CCScan(CSScan):
                 break
 
         if _contiune:
-
             self._timer_worker.start()
 
             while self.motion_event.is_set():

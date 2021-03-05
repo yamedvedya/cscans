@@ -11,7 +11,7 @@ import time
 import os
 import numpy as np
 
-# cscan imports
+# cscans imports
 from cs_axillary_functions import ExcThread, CannotDoPilc
 from cs_constants import *
 

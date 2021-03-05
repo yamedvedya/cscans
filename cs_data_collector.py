@@ -13,7 +13,7 @@ if sys.version_info.major >= 3:
 else:
     from Queue import Empty as empty_queue
 
-# cscan imports
+# cscans imports
 from cs_axillary_functions import ExcThread
 from cs_constants import *
 

@@ -15,7 +15,7 @@ if sys.version_info.major >= 3:
 else:
     from Queue import Empty as empty_queue
 
-# cscan imports
+# cscans imports
 from cs_axillary_functions import ExcThread, get_tango_device
 from cs_constants import *
 
@@ -57,7 +57,7 @@ class TimerWorker(object):
     def _main_loop(self):
         _acq_start_time = time.time()
         try:
-            _last_position = self._movement.get_main_motor_position()
+            _timer_start_position = _last_position = self._movement.get_main_motor_position()
             while not self._worker.stopped():
 
                 if not self._paused:
@@ -94,12 +94,13 @@ class TimerWorker(object):
 
                     self._timing_logger['Position_measurement'].append(_timing)
 
-                    if self._movement.get_main_motor_position() == _last_position:
-                        self._macro.report_debug('Timer stops due to repeating position {}'.format(_last_position))
-                        break
+                    if _position > _timer_start_position:
+                        if _position == _last_position:
+                            self._macro.report_debug('Timer stops due to repeating position {}'.format(_position))
+                            break
 
                     self._point += 1
-                    _last_position = self._movement.get_main_motor_position()
+                    _last_position = _position
 
                     _start_time2 = time.time()
                     self._data_collector_trigger.put([self._point, time.time() - _acq_start_time, _position])
@@ -178,9 +179,15 @@ class DataSourceWorker(object):
         self._is_counter = False
         for counter_name in counter_names:
             if counter_name in source_info.full_name:
-                self._counter_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
-                self._counter_proxy.Reset()
+                self._tango_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
+                self._tango_proxy.Reset()
                 self._is_counter = True
+
+        self._is_timer = False
+        if 'eh_t' in source_info.label:
+            self._tango_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
+            self._timer_value = None
+            self._is_timer = True
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
@@ -194,10 +201,15 @@ class DataSourceWorker(object):
                     self.data_buffer[point_to_collect] = {self.channel_name: None}
 
                     _start_time = time.time()
-                    data = getattr(self._device_proxy, self._device_attribute)
+                    if self._is_timer:
+                        if self._timer_value is None:
+                            self._timer_value = self._tango_proxy.SampleTime
+                        data = self._timer_value
+                    else:
+                        data = getattr(self._device_proxy, self._device_attribute)
                     self.data_buffer[point_to_collect][self.channel_name] = data
                     if self._is_counter:
-                        self._counter_proxy.Reset()
+                        self._tango_proxy.Reset()
                     self._workers_done_barrier.report(self._my_id)
                     self.last_collected_point = point_to_collect
 

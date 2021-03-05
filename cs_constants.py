@@ -19,7 +19,7 @@ MOTOR_POSITION_REFRESH_PERIOD = 1e-1
 # How the motors are operated:
 # 'serial': reliable, but slower,
 # 'parallel' - in case of multi motor movement can considerably speed up measurements, but sometimes OMS dies :-)
-MOTOR_MOVEMENT_TYPE = 'parallel'
+MOTOR_MOVEMENT_TYPE = 'serial'
 # if mode is 'parallel' all request to Tnago can be operated through the Lock - more reliable, but slower
 MOTOR_COMMAND_LOCK = True
 
