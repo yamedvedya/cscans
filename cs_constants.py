@@ -54,8 +54,16 @@ PLIC_TRIGGERS = ['p23/pilctriggergenerator/dev.01', 'p23/pilctriggergenerator/de
 PLIC_COUNTER = 'p23/pilcscanslave/exp.03'
 PLIC_ADC = 'p23/pilcscanslave/exp.04'
 
-PLIC_MOTORS_MAP = {'omega': {'device': 0, 'encoder': 1},
-                   'delta': {'device': 1, 'encoder': 1}}
+PLIC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
+                   'gy': {'device': 0, 'encoder': 2},
+                   'gz': {'device': 0, 'encoder': 4},
+                   'omega': {'device': 0, 'encoder': 3},
+                   'delta': {'device': 0, 'encoder': 5},
+                   'omega_t': {'device': 1, 'encoder': 1},
+                   'gamma': {'device': 1, 'encoder': 2},
+                   'phi': {'device': 1, 'encoder': 4},
+                   'chi': {'device': 1, 'encoder': 3},
+                   'mu': {'device': 1, 'encoder': 5}}
 
 PLIC_DETECTOR_MAP = {'eh_c01': {'device': 'TG0', 'attribute': 'CounterData'}}
 

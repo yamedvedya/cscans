@@ -12,7 +12,8 @@ __all__ = ['dcscan', 'acscan', 'd2cscan', 'a2cscan',
            'ctscan','cscan_senv']
 
 # general python imports
-from imp import reload
+from importlib import reload
+import PyTango
 import numpy as np
 import os
 import sys
@@ -527,6 +528,15 @@ class cscan_senv(Macro):
         self.setEnv("cscan_timeme", False)
         self.setEnv("cscan_debug", False)
         self.setEnv("cscan_monitor", False)
+
+
+class cscan_set_pilc(Macro):
+    """ Sets default environment variables """
+
+    def run(self):
+        PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([0x03, 0x01, 0x03])
+        PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x01, 0x01, 0x03])
+        PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([0x03, 0x01, 0x03])
 
 # ----------------------------------------------------------------------
 #                       Auxiliary function
