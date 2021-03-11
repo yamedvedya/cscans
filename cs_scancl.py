@@ -250,3 +250,8 @@ class aNcscan(iMacro, CscanClass):
 
     def getCommand(self):
         return self._get_command('a')
+
+    # ----------------------------------------------------------------------
+    def on_abort(self):
+        self.warning('GOT ON_STOP REQUEST')
+        self._gScan.do_restore()

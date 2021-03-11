@@ -395,9 +395,6 @@ class CCScan(CSScan):
         self._scan_in_process = True
 
         if hasattr(self.macro, 'getHooks'):
-            for hook in self.macro.getHooks('pre-scan'):
-                hook()
-
             for hook in self.macro.getHooks('pre-move-hooks'):
                 hook()
 
@@ -513,6 +510,10 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def _finish_scan(self):
 
+        if self.movement.is_moving():
+            self.macro.report_debug('Stopping motion')
+            self.movement.stop_move()
+
         # Get last started point and set it to data collector
         self._data_collector.set_last_point(self._timer_worker.stop())
 
@@ -586,8 +587,9 @@ class CCScan(CSScan):
         if self._scan_in_process:
             self._finish_scan()
 
-        self.macro.report_debug('Stopping motion')
-        self.movement.stop_move()
+        if self.movement.is_moving():
+            self.macro.report_debug('Stopping motion')
+            self.movement.stop_move()
 
         self.macro.report_debug('Resetting motors')
         self._restore_motors()

@@ -177,6 +177,15 @@ class AbstractMovement(object):
         raise RuntimeError('Non implemented!')
 
     # ----------------------------------------------------------------------
+    def stop_move(self):
+        self._macro.report_debug('Stopping motors')
+        raise RuntimeError('Non implemented!')
+
+    # ----------------------------------------------------------------------
+    def is_moving(self):
+        return self._is_in_move()
+
+    # ----------------------------------------------------------------------
     def close(self):
         # stops all threads
         self._stop = True
