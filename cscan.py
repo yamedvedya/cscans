@@ -536,6 +536,7 @@ class cscan_set_pilc(Macro):
     def run(self):
         PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([0x03, 0x01, 0x03])
         PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x01, 0x01, 0x03])
+        PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x05, 0x01, 0x03])
         PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([0x03, 0x01, 0x03])
 
 # ----------------------------------------------------------------------
