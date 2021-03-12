@@ -32,7 +32,7 @@ from cs_axillary_functions import EndMeasurementBarrier, ExcThread, CannotDoPilc
 from cs_pilc_workers import PILCWorker
 from cs_data_workers import DataSourceWorker, LambdaRoiWorker, TimerWorker
 from cs_data_collector import DataCollectorWorker
-from cs_movement import ParallelMovement, SerialMovement
+from cs_movement import SerialMovement
 from cs_constants import *
 
 # ----------------------------------------------------------------------
@@ -42,7 +42,7 @@ from cs_constants import *
 class CCScan(CSScan):
 
     def __init__(self, macro, waypointGenerator=None, periodGenerator=None,
-                 moveables=[], env={}, constraints=[], extrainfodesc=[]):
+                 moveables=[], env={}, constraints=[], extrainfodesc=[], move_mode='normal'):
         super(CCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc)
 
@@ -70,12 +70,8 @@ class CCScan(CSScan):
         self._start_positions = [[]]
 
         # here we get the class, which provides us all movement functionality
-        if MOTOR_MOVEMENT_TYPE == 'serial':
-            self.movement = SerialMovement(self.macro, self._physical_moveables,
-                                             [m.moveable.getName() for m in self.moveables], self._error_queue)
-        else:
-            self.movement = ParallelMovement(self.macro, self._physical_moveables,
-                                             [m.moveable.getName() for m in self.moveables], self._error_queue)
+        self.movement = SerialMovement(move_mode, self.macro, self._physical_moveables,
+                                         [m.moveable.getName() for m in self.moveables], self._error_queue)
 
         if self.macro.mode == 'dscan':
             self._original_positions = self.movement.physical_motors_positions()
@@ -380,7 +376,7 @@ class CCScan(CSScan):
             if len(self._start_positions) > 1:
                 self.macro.output("Section {} of {}: start scan movement".format(part+1, len(self._start_positions)))
 
-            self.movement.movevcc(cmd_list, monitor=self.macro.motion_monitor)
+            self.movement.move_slowed(cmd_list, monitor=self.macro.motion_monitor)
 
             self._timer_worker.pause()
 
@@ -532,13 +528,16 @@ class CCScan(CSScan):
         for worker in self._data_workers:
             worker.stop()
 
-        if hasattr(self.macro, 'getHooks'):
-            for hook in self.macro.getHooks('post-acq'):
-                hook()
-            for hook in self.macro.getHooks('post-move'):
-                hook()
-            for hook in self.macro.getHooks('post-scan'):
-                hook()
+        try:
+            if hasattr(self.macro, 'getHooks'):
+                for hook in self.macro.getHooks('post-acq'):
+                    hook()
+                for hook in self.macro.getHooks('post-move'):
+                    hook()
+                for hook in self.macro.getHooks('post-scan'):
+                    hook()
+        except:
+            pass
 
         env = self._env
         env['acqtime'] = self._data_collector.last_collected_point*self._integration_time
@@ -593,6 +592,9 @@ class CCScan(CSScan):
 
         self.macro.report_debug('Resetting motors')
         self._restore_motors()
+
+        if os.path.exists(TMP_FILE):
+            os.remove(TMP_FILE)
 
         if self._has_lambda:
             self.macro.report_debug('Stopping LambdaOnlineAnalysis')

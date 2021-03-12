@@ -292,8 +292,9 @@ class LambdaRoiWorker(object):
                     _start_time = time.time()
                     self.data_buffer[point_to_collect] = {}
                     _success = False
-                    while time.time() - _start_time < self.timeout:
+                    while time.time() - _start_time < TIMEOUT_LAMBDA:
                         if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
+                            # self._macro.output('Got point after {}'.format(time.time() - _start_time))
                             _data_to_print = {}
                             if self._correction_needed:
                                 atten = self._attenuator_proxy.Position

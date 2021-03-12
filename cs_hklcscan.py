@@ -19,8 +19,9 @@ class HklCScan(CCScan):
 
     def __init__(self, macro, waypointGenerator=None, periodGenerator=None,
                  moveables=[], env={}, constraints=[], extrainfodesc=[]):
+
         super(HklCScan, self).__init__(macro, waypointGenerator, periodGenerator,
-                 moveables, env, constraints, extrainfodesc)
+                 moveables, env, constraints, extrainfodesc, move_mode='vvc')
 
         self._main_motor_found = False
 

@@ -16,12 +16,6 @@ MOTORS_POSITION_LOGIC = 'center' # 'before', 'center' or 'after'
 
 # How frequent the motors positions is save to log
 MOTOR_POSITION_REFRESH_PERIOD = 1e-1
-# How the motors are operated:
-# 'serial': reliable, but slower,
-# 'parallel' - in case of multi motor movement can considerably speed up measurements, but sometimes OMS dies :-)
-MOTOR_MOVEMENT_TYPE = 'serial'
-# if mode is 'parallel' all request to Tnago can be operated through the Lock - more reliable, but slower
-MOTOR_COMMAND_LOCK = True
 
 # which motor is used for time scan
 DUMMY_MOTOR = 'exp_dmy01'
@@ -67,5 +61,5 @@ PLIC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
 
 PLIC_DETECTOR_MAP = {'eh_c01': {'device': 'TG0', 'attribute': 'CounterData'}}
 
-# Map of the devices, plugged to the PILCs:
+TMP_FILE = '/tmp/cscan_motor_backup'
 
