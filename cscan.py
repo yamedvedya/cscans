@@ -12,7 +12,12 @@ __all__ = ['dcscan', 'acscan', 'd2cscan', 'a2cscan',
            'ctscan','cscan_senv']
 
 # general python imports
-from importlib import reload
+import sys
+if sys.version_info.major >= 3:
+    from importlib import reload
+else:
+    from imp import reload
+
 import PyTango
 import numpy as np
 import os

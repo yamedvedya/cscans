@@ -177,17 +177,18 @@ class DataSourceWorker(object):
         self._channel_label = source_info.label
 
         self._is_counter = False
-        for counter_name in counter_names:
+        for counter_name in COUNTER_NAMES:
             if counter_name in source_info.full_name:
                 self._tango_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
                 self._tango_proxy.Reset()
                 self._is_counter = True
 
         self._is_timer = False
-        if 'eh_t' in source_info.label:
-            self._tango_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
-            self._timer_value = None
-            self._is_timer = True
+        for timer_prefix in TIMER_PREFIXES:
+            if timer_prefix in source_info.label:
+                self._tango_proxy = PyTango.DeviceProxy(get_tango_device(source_info))
+                self._timer_value = None
+                self._is_timer = True
 
         self._worker = ExcThread(self._main_loop, source_info.name, error_queue)
         self._worker.start()
