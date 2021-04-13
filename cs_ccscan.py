@@ -170,11 +170,12 @@ class CCScan(CSScan):
         ind = 0
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
             # this is main timer
-            if 'eh_t' in channel_info.label:
-                self._timer_worker = TimerWorker(get_tango_device(channel_info), self._error_queue,
-                                                 _worker_triggers + _lambda_trigger, _data_collector_trigger,
-                                                 _workers_done_barrier, self.macro, self.movement,
-                                                 self._timing_logger)
+            for timer_prefix in TIMER_PREFIXES:
+                if timer_prefix in channel_info.label:
+                    self._timer_worker = TimerWorker(get_tango_device(channel_info), self._error_queue,
+                                                     _worker_triggers + _lambda_trigger, _data_collector_trigger,
+                                                     _workers_done_barrier, self.macro, self.movement,
+                                                     self._timing_logger)
 
             # all others sources
             if not ('lmbd' in channel_info.label or 'lambda' in channel_info.label):
@@ -419,7 +420,20 @@ class CCScan(CSScan):
         self._timer_worker.start()
 
         self.macro.report_debug("waiting for motion event")
-        self.motion_event.wait()
+        while not self.motion_event.is_set():
+            if self.macro.isStopped():
+                return
+
+            try:
+                err = self._error_queue.get(block=False)
+            except empty_queue:
+                pass
+            else:
+                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
+                                                                                          err[2].tb_lineno))
+                return
+
+            time.sleep(REFRESH_PERIOD)
 
         while self.motion_event.is_set() and not self._timer_worker.is_done():
 
@@ -449,11 +463,23 @@ class CCScan(CSScan):
 
         self.macro.report_debug("waiting for motion event")
         # wait for motor to reach start position
-        self.motion_event.wait()
+
+        while not self.motion_event.is_set():
+            if self.macro.isStopped():
+                return
+
+            try:
+                err = self._error_queue.get(block=False)
+            except empty_queue:
+                pass
+            else:
+                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
+                                                                                          err[2].tb_lineno))
+                return
+
+            time.sleep(REFRESH_PERIOD)
 
         _last_notice = time.time()
-
-        _contiune = True
 
         # wait for motor to reach max velocity
         self.macro.report_debug("wait for motors to pass start point")
@@ -475,38 +501,36 @@ class CCScan(CSScan):
                                                                                               err[2].tb_lineno))
                 else:
                     self.macro.report_debug('Got an exception {} '.format(err))
-                _contiune = False
+                return
+
+        self._timer_worker.start()
+
+        while self.motion_event.is_set():
+
+            # allow scan to stop
+            if self.macro.isStopped():
                 break
 
-        if _contiune:
-            self._timer_worker.start()
-
-            while self.motion_event.is_set():
-
-                # allow scan to stop
-                if self.macro.isStopped():
-                    break
-
-                try:
-                    err = self._error_queue.get(block=False)
-                except empty_queue:
-                    pass
+            try:
+                err = self._error_queue.get(block=False)
+            except empty_queue:
+                pass
+            else:
+                if err is list:
+                    self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
+                                                                                              err[2].tb_lineno))
                 else:
-                    if err is list:
-                        self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
-                                                                                                  err[2].tb_lineno))
-                    else:
-                        self.macro.report_debug('Got an exception {} '.format(err))
+                    self.macro.report_debug('Got an exception {} '.format(err))
 
-                    break
+                break
 
-                if _check_position(self._pos_stop_measurements):
-                    break
+            if _check_position(self._pos_stop_measurements):
+                break
 
-            self.macro.report_debug('scan finished {} {} {}'.format(self._movement_direction,
-                                                                    self.movement.get_main_motor_position(),
-                                                                    self._pos_stop_measurements))
 
+        self.macro.report_debug('scan finished {} {} {}'.format(self._movement_direction,
+                                                         self.movement.get_main_motor_position(),
+                                                         self._pos_stop_measurements))
     # ----------------------------------------------------------------------
     def _finish_scan(self):
 

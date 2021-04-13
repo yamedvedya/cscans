@@ -278,8 +278,7 @@ def send_move_command(device, command_list, mode, macro):
                     '{} slew rate changed from {} to {}'.format(device.name(), old_speed, device.slewrate))
 
             elif hasattr(device, 'velocity'):
-                old_velocity = device.slewrate
-                f.write('{};velocity;{}\n'.format(device.name(), device.slewrate))
+                f.write('{};velocity;{}\n'.format(device.name(), device.velocity))
                 device.velocity = command_list[0][0]
                 device.position = command_list[0][1]
                 macro.report_debug(

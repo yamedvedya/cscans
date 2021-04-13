@@ -35,7 +35,8 @@ POSITION_ROUND = 3
 LIN_MOVE_THRESHOLD = 1e-2
 
 # Super ugly, should be better solution:
-counter_names = ('sis3820',)
+COUNTER_NAMES = ('sis3820',)
+TIMER_PREFIXES = ('eh_t', 'exp_t')
 
 # do we use pilc or not:
 PLIC_MODE = False
