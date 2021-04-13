@@ -271,18 +271,19 @@ def send_move_command(device, command_list, mode, macro):
         with open(TMP_FILE, 'w') as f:
             if hasattr(device, 'slewrate') and hasattr(device, 'conversion'):
                 old_slewrate = device.slewrate
-                f.write('{};slewrate;{}\n'.format(device.name(), old_speed))
+                f.write('{};slewrate;{}\n'.format(device.name(), old_slewrate))
                 device.slewrate = int(command_list[0][0] * device.conversion)
                 device.position = command_list[0][1]
                 macro.report_debug(
-                    '{} slew rate changed from {} to {}'.format(device.name(), old_speed, device.slewrate))
+                    '{} slew rate changed from {} to {}'.format(device.name(), old_slewrate, device.slewrate))
 
             elif hasattr(device, 'velocity'):
-                f.write('{};velocity;{}\n'.format(device.name(), device.velocity))
+                old_velocity = device.velocity
+                f.write('{};velocity;{}\n'.format(device.name(), old_velocity))
                 device.velocity = command_list[0][0]
                 device.position = command_list[0][1]
                 macro.report_debug(
-                    '{} velocity changed from {} to {}'.format(device.name(), old_speed, device.slewrate))
+                    '{} velocity changed from {} to {}'.format(device.name(), old_velocity, device.velocity))
             else:
                 raise RuntimeError('Could not move {}'.format(device.name()))
 
