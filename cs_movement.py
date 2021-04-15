@@ -186,7 +186,12 @@ class SerialMovement(object):
     def stop_move(self):
         self._macro.report_debug('Stopping motors')
         for device in self._devices:
-            device.StopMove()
+            if hasattr(device, 'StopMove'):
+                device.StopMove()
+            elif hasattr(device, 'Stop'):
+                device.Stop()
+            else:
+                raise RuntimeError('Cannot stop {}'.format(device))
 
     # ----------------------------------------------------------------------
     def is_moving(self):

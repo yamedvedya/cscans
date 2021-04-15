@@ -29,8 +29,9 @@ from sardana.macroserver.scan import CSScan
 # cscans imports, always reloaded to track changes
 
 from cs_axillary_functions import EndMeasurementBarrier, ExcThread, CannotDoPilc, get_tango_device
+from cs_setup_detectors import setup_detector, stop_detector
 from cs_pilc_workers import PILCWorker
-from cs_data_workers import DataSourceWorker, LambdaRoiWorker, TimerWorker
+from cs_data_workers import DataSourceWorker, DetectorWorker, TimerWorker
 from cs_data_collector import DataCollectorWorker
 from cs_movement import SerialMovement
 from cs_constants import *
@@ -86,48 +87,47 @@ class CCScan(CSScan):
         self._data_workers = []
 
         # Lambda has a personal worker, which joins Lambda and LambdaOnlineAnalysis
-        self._has_lambda = False
-        self._lambda_worker = None
-        _lambda_trigger = []
+        self._2d_detectors = []
+        self._2d_detector_workers = {}
+        _2d_detector_triggers = []
 
         # first we parse all channels in MG and see if we have Lambda
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
-            if 'lmbd' in channel_info.label:
-                # for the first entry we need to prepare LambdaWorker
-                if self._lambda_worker is None:
-                    _lambda_trigger = [Queue()]
-                    self._timing_logger['Lambda'] = []
-                    self._has_lambda = True
-                    self._original_trigger_mode, self._original_operating_mode = None, None
-                    self._lambda_worker = LambdaRoiWorker(_lambda_trigger[0], self._error_queue, self.macro,
-                                                          self._timing_logger)
-                    self._data_workers.append(self._lambda_worker)
+            for name in DETECTOR_NAMES:
+                if name in channel_info.label:
+                    # for the first entry we need to prepare LambdaWorker
+                    if name not in self._2d_detectors:
+                        trigger = Queue()
+                        self._2d_detector_workers[name] = DetectorWorker(name, trigger, self._error_queue, self.macro,
+                                                                         self._timing_logger)
+                        _2d_detector_triggers.append(trigger)
+                        self._data_workers.append(self._2d_detector_workers[name])
+                        self._2d_detectors.append(name)
 
-                if 'lmbd_countsroi' in channel_info.label or channel_info.label == 'lmbd':
-                    self._lambda_worker.add_channel(channel_info)
-                else:
-                    raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
+                    try:
+                        self._2d_detector_workers[name].add_channel(channel_info)
+                    except:
+                        raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
 
         #we need to pass this trigger to timer worker, so we do it first
         _data_collector_trigger = Queue()
 
         timer_set = False
         if PLIC_MODE:
-            self._pilc_scan = timer_set = self._setup_pilc(_lambda_trigger, _data_collector_trigger)
+            self._pilc_scan = timer_set = self._setup_pilc(_2d_detector_triggers, _data_collector_trigger)
 
         if not timer_set:
-            self._setup_tango_workers(_lambda_trigger, _data_collector_trigger)
+            self._setup_tango_workers(_2d_detector_triggers, _data_collector_trigger)
 
         self._data_collector = DataCollectorWorker(self.macro, self._data_workers,
                                                    _data_collector_trigger, self._error_queue, self._extra_columns,
                                                    [m.moveable.getName() for m in self.moveables], self.data)
 
     # ----------------------------------------------------------------------
-    def _setup_pilc(self, _lambda_trigger, _data_collector_trigger):
+    def _setup_pilc(self, detector_triggers, _data_collector_trigger):
 
         try:
-            self._timer_worker = PILCWorker(self.macro, _data_collector_trigger,
-                                            _lambda_trigger[0] if len(_lambda_trigger) else None,
+            self._timer_worker = PILCWorker(self.macro, _data_collector_trigger, detector_triggers,
                                             [m.moveable.getName() for m in self.moveables],
                                             self.measurement_group.getChannelsEnabledInfo(),
                                             self._error_queue)
@@ -143,7 +143,7 @@ class CCScan(CSScan):
         return True
 
     # ----------------------------------------------------------------------
-    def _setup_tango_workers(self, _lambda_trigger, _data_collector_trigger):
+    def _setup_tango_workers(self, detector_triggers, _data_collector_trigger):
 
         self._timing_logger['Point_dead_time'] = []
         self._timing_logger['Timer'] = []
@@ -155,7 +155,11 @@ class CCScan(CSScan):
 
         # first we parse all channels in MG and see if we have Lambda
         for ind, channel_info in enumerate(self.measurement_group.getChannelsEnabledInfo()):
-            if not 'lmbd' in channel_info.label:
+            detector = False
+            for name in DETECTOR_NAMES:
+                if name in channel_info.label:
+                    detector = True
+            if not detector:
                 _worker_triggers.append(Queue())
                 num_counters += 1
 
@@ -169,67 +173,21 @@ class CCScan(CSScan):
             for timer_prefix in TIMER_PREFIXES:
                 if timer_prefix in channel_info.label:
                     self._timer_worker = TimerWorker(get_tango_device(channel_info), self._error_queue,
-                                                     _worker_triggers + _lambda_trigger, _data_collector_trigger,
+                                                     _worker_triggers + detector_triggers, _data_collector_trigger,
                                                      _workers_done_barrier, self.macro, self.movement,
                                                      self._timing_logger)
 
             # all others sources
-            if not 'lmbd' in channel_info.label:
+            detector = False
+            for name in DETECTOR_NAMES:
+                if name in channel_info.label:
+                    detector = True
+            if not detector:
                 self._timing_logger[channel_info.label] = []
                 self._data_workers.append(DataSourceWorker(ind, channel_info, _worker_triggers[ind],
                                                            _workers_done_barrier, self._error_queue, self.macro,
                                                            self._timing_logger))
                 ind += 1
-
-    # ----------------------------------------------------------------------
-    def _setup_lambda(self, integ_time):
-
-        ### Here we setup Lambda: first we check that Lambda and LambdaOnlineAnalysis are not running,
-        # if yes - trying to stop them (within TIMEOUT_LAMBDA)
-        ###
-
-        _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
-        if _lambda_proxy.State() != PyTango.DevState.ON:
-            _lambda_proxy.StopAcq()
-            _time_out = time.time()
-            while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
-                time.sleep(0.1)
-                self.macro.checkPoint()
-
-            if _lambda_proxy.State() != PyTango.DevState.ON:
-                self.macro.output(_lambda_proxy.State())
-                raise RuntimeError('Cannot stop LAMBDA')
-
-        _lambda_proxy.TriggerMode = 2
-        if self._pilc_scan:
-            _lambda_proxy.ShutterTime = int(integ_time * 1000) - PILC_TRIGGER_TIME - PILC_LAMBDA_DELAY
-        else:
-            _lambda_proxy.ShutterTime = int(integ_time * 1000)
-
-        _lambda_proxy.FrameNumbers = max(self.macro.nsteps, 1000)
-        _lambda_proxy.StartAcq()
-
-        _time_out = time.time()
-        while _lambda_proxy.State() != PyTango.DevState.MOVING and time.time() - _time_out < TIMEOUT_LAMBDA:
-            time.sleep(0.1)
-            macro.checkPoint()
-
-        if _lambda_proxy.State() != PyTango.DevState.MOVING:
-            self.macro.output(_lambda_proxy.State())
-            raise RuntimeError('Cannot start LAMBDA')
-
-        self.macro.report_debug('LAMBDA state after setup: {}'.format(_lambda_proxy.State()))
-
-        _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
-        if _lambdaonlineanalysis_proxy.State() == PyTango.DevState.MOVING:
-            _lambdaonlineanalysis_proxy.StopAnalysis()
-
-        _lambdaonlineanalysis_proxy.StartAnalysis()
-
-        if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.MOVING:
-                raise RuntimeError('Cannot start LambdaOnlineAnalysis')
-
-        self.macro.report_debug('LambdaOnLineAnalysis state after setup: {}'.format(_lambda_proxy.State()))
 
     # ----------------------------------------------------------------------
     def calculate_speed(self, waypoint):
@@ -354,9 +312,11 @@ class CCScan(CSScan):
         self._data_collector.set_new_step_info(step_info)
         self._timer_worker.set_new_period(self._integration_time)
 
-        if self._has_lambda:
-            self._setup_lambda(self._integration_time)
-            self._lambda_worker.set_timeout(self._integration_time)
+        for detector in self._2d_detectors:
+            setup_detector(detector, self.macro, self._pilc_scan, self._integration_time)
+
+        for worker in self._2d_detector_workers.values():
+            worker.set_timeout(self._integration_time)
 
         if self.macro.isStopped():
             return
@@ -620,33 +580,8 @@ class CCScan(CSScan):
         if os.path.exists(TMP_FILE):
             os.remove(TMP_FILE)
 
-        if self._has_lambda:
-            self.macro.report_debug('Stopping LambdaOnlineAnalysis')
-            _lambdaonlineanalysis_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaOnlineAnalysis'))
-            _lambdaonlineanalysis_proxy.StopAnalysis()
-            time.sleep(0.1)
-
-            _time_out = time.time()
-            while _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
-                time.sleep(0.1)
-
-            if _lambdaonlineanalysis_proxy.State() != PyTango.DevState.ON:
-                self.macro.output('Cannot stop LambdaOnlineAnalysis!')
-
-            self.macro.report_debug('Stopping Lambda')
-
-            _lambda_proxy = PyTango.DeviceProxy(self.macro.getEnv('LambdaDevice'))
-            _lambda_proxy.StopAcq()
-
-            _time_out = time.time()
-            while _lambda_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_LAMBDA:
-                time.sleep(0.1)
-
-            if _lambda_proxy.State() == PyTango.DevState.ON:
-                _lambda_proxy.FrameNumbers = 1
-                _lambda_proxy.TriggerMode = 0
-            else:
-                self.macro.output('Cannot reset Lambda! Check the settings.')
+        for detector in self._2d_detectors:
+            stop_detector(detector, self.macro)
 
         if self.macro.mode == 'dscan':
             self.macro.output("Returning to start positions {}".format(self._original_positions))

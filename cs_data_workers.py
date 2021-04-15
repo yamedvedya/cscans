@@ -239,9 +239,9 @@ class DataSourceWorker(object):
 #                       Lambda ROI reader class
 # ----------------------------------------------------------------------
 
+class DetectorWorker(object):
 
-class LambdaRoiWorker(object):
-    def __init__(self, trigger, error_queue, macro, timing_logger):
+    def __init__(self, detector, trigger, error_queue, macro, timing_logger):
         # arguments:
         # index = worker index
         # channel_info - channels information from measurement group
@@ -250,38 +250,47 @@ class LambdaRoiWorker(object):
         # error_queue - queue to report problems
         # macro - link to marco
 
-        self._trigger = trigger
         self._macro = macro
+        self._trigger = trigger
         self._timing_logger = timing_logger
 
         self.last_collected_point = -1
         self.timeout = 0
 
-        self._correction_needed = False
-        self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('AttenuatorProxy'))
-
-        # channel_num, full_name, need correction
         self._channels = []
-        self.channel_name = 'Lambda'
-
         self.data_buffer = {}
-        self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
 
-        self._worker = ExcThread(self._main_loop, 'lambda_worker', error_queue)
+        if detector == 'lmbd':
+            self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+            self.channel_name = 'Lambda'
+        elif detector == 'p300':
+            self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('PilatusAnalysis'))
+            self.channel_name = 'Pilatus'
+        else:
+            raise RuntimeError('Unknown detector!')
+
+        self._timing_logger[self.channel_name] = []
+        self._correction_needed = False
+        try:
+            self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('AttenuatorProxy'))
+        except:
+            self._attenuator_proxy = None
+
+        self._worker = ExcThread(self._main_loop, '{}_worker'.format(self.channel_name), error_queue)
         self._worker.start()
 
     # ----------------------------------------------------------------------
     def add_channel(self, source_info):
 
         if 'atten' in source_info.label:
-            self._channels.append([int(source_info.label[-7])-1, source_info.label, source_info.full_name, True])
+            self._channels.append([int(source_info.label[-7]) - 1, source_info.label, source_info.full_name, True])
             self._correction_needed = True
 
-        elif source_info.label == 'lmbd':
+        elif source_info.label in ['lmbd', 'p300']:
             self._channels.append([-1, source_info.label, source_info.full_name, False])
 
         else:
-            self._channels.append([int(source_info.label[-1])-1, source_info.label, source_info.full_name, False])
+            self._channels.append([int(source_info.label[-1]) - 1, source_info.label, source_info.full_name, False])
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
@@ -289,15 +298,14 @@ class LambdaRoiWorker(object):
             while not self._worker.stopped():
                 try:
                     point_to_collect = self._trigger.get(block=False)
-                    self._macro.report_debug('Lambda tigger {}'.format(point_to_collect))
+                    self._macro.report_debug('{} trigger {}'.format(self.channel_name, point_to_collect))
                     _start_time = time.time()
                     self.data_buffer[point_to_collect] = {}
                     _success = False
-                    while time.time() - _start_time < TIMEOUT_LAMBDA:
+                    while time.time() - _start_time < TIMEOUT_DETECTORS:
                         if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
-                            # self._macro.output('Got point after {}'.format(time.time() - _start_time))
                             _data_to_print = {}
-                            if self._correction_needed:
+                            if self._correction_needed and self._attenuator_proxy is not None:
                                 atten = self._attenuator_proxy.Position
                             else:
                                 atten = 1
@@ -313,9 +321,10 @@ class LambdaRoiWorker(object):
                                 self.data_buffer[point_to_collect][full_name] = data
                                 _data_to_print[label] = data
 
-                            self._timing_logger['Lambda'].append(time.time() - _start_time)
+                            self._timing_logger['{}'.format(self.channel_name)].append(time.time() - _start_time)
 
-                            self._macro.report_debug('Lambda point {} data {}'.format(point_to_collect, _data_to_print))
+                            self._macro.report_debug('{} point {} data {}'.format(self.channel_name, point_to_collect,
+                                                                                  _data_to_print))
 
                             self.last_collected_point = point_to_collect
 
@@ -326,13 +335,13 @@ class LambdaRoiWorker(object):
                             time.sleep(REFRESH_PERIOD)
 
                     if not _success:
-                        raise RuntimeError('No response from Lambda!')
+                        raise RuntimeError('No response from {}!'.format(self.channel_name))
 
                 except empty_queue:
                     time.sleep(REFRESH_PERIOD)
 
         except Exception as err:
-            self._macro.error('Lambda worker error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
+            self._macro.error('{} worker error {} {}'.format(self.channel_name, err, sys.exc_info()[2].tb_lineno))
             raise err
 
     # ----------------------------------------------------------------------

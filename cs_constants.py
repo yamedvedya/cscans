@@ -7,7 +7,7 @@ Author yury.matveev@desy.de
 # General timeout to interrupt scan
 TIMEOUT = 5
 # Special timout for Lambda
-TIMEOUT_LAMBDA = 3
+TIMEOUT_DETECTORS = 3
 # General delay on loops (to decrease processor load)
 REFRESH_PERIOD = 1e-4
 
@@ -37,11 +37,12 @@ LIN_MOVE_THRESHOLD = 1e-2
 # Super ugly, should be better solution:
 COUNTER_NAMES = ('sis3820',)
 TIMER_PREFIXES = ('eh_t', 'exp_t')
+DETECTOR_NAMES = ('lmbd', 'p300')
 
 # do we use pilc or not:
 PLIC_MODE = False
 
-PILC_LAMBDA_DELAY = 1 # ms
+PILC_DETECTOR_DELAY = 1 # ms
 PILC_TRIGGER_TIME = 0.1 #ms
 
 # PILC addresses:

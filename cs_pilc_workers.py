@@ -21,7 +21,7 @@ from cs_constants import *
 
 
 class PILCWorker(object):
-    def __init__(self, macro, data_collector_trigger, lambda_trigger, movables, experimental_channels, error_queue):
+    def __init__(self, macro, data_collector_trigger, detector_triggers, movables, experimental_channels, error_queue):
 
         self._error_queue = error_queue
         self._macro = macro
@@ -47,7 +47,7 @@ class PILCWorker(object):
                 self._channels.append([channel_info.label, channel_info.full_name])
 
         self._data_collector_trigger = data_collector_trigger
-        self._lambda_trigger = lambda_trigger
+        self._detector_triggers = detector_triggers
 
         self._trigger_generators = [PyTango.DeviceProxy(device) for device in PLIC_TRIGGERS]
         self._counter = PyTango.DeviceProxy(PLIC_COUNTER)
@@ -104,8 +104,8 @@ class PILCWorker(object):
                             self.data_buffer[_new_point][full_name] = self._get_point_for_detector(name, _new_point)
 
                         self.last_collected_point = _new_point
-                        if self._lambda_trigger is not None:
-                            self._lambda_trigger.put(self.last_collected_point)
+                        for trigger in self._detector_triggers:
+                            trigger.put(self.last_collected_point)
                         self._data_collector_trigger.put([self.last_collected_point, time.time() - _start_time,
                                                           _position])
             else:
