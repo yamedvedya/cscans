@@ -239,7 +239,7 @@ class SerialMovement(object):
 
                 # in case motor does not need move main class will send us None as instruction, so we skip it
                 if command_list is not None:
-                    close_loop_state[ind] = send_move_command(device, command_list, self._move_mode)
+                    close_loop_state[ind] = send_move_command(device, command_list, self._move_mode, self._macro)
                     if close_loop_state[ind] is not None:
                         self._macro.report_debug('{} was in closed loop, switching'.format(device.name()))
 
@@ -259,7 +259,7 @@ class SerialMovement(object):
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
-def send_move_command(device, command_list, mode):
+def send_move_command(device, command_list, mode, macro):
     close_loop_state = None
 
     if hasattr(device, 'movevvc') and hasattr(device, 'conversion') and mode == 'vvc':
@@ -275,14 +275,20 @@ def send_move_command(device, command_list, mode):
 
         with open(TMP_FILE, 'w') as f:
             if hasattr(device, 'slewrate') and hasattr(device, 'conversion'):
-                f.write('{};slewrate;{}\n'.format(device.name(), device.slewrate))
-                device.slewrate = int(command_list[0][0] * device.conversion)
+                old_slewrate = device.slewrate
+                f.write('{};slewrate;{}\n'.format(device.name(), old_slewrate))
+                device.slewrate = int(abs(command_list[0][0] * device.conversion))
                 device.position = command_list[0][1]
+                macro.report_debug(
+                    '{} slew rate changed from {} to {}'.format(device.name(), old_slewrate, device.slewrate))
 
             elif hasattr(device, 'velocity'):
-                f.write('{};velocity;{}\n'.format(device.name(), device.velocity))
+                old_velocity = device.velocity
+                f.write('{};velocity;{}\n'.format(device.name(), old_velocity))
                 device.velocity = command_list[0][0]
                 device.position = command_list[0][1]
+                macro.report_debug(
+                    '{} velocity changed from {} to {}'.format(device.name(), old_velocity, device.velocity))
             else:
                 raise RuntimeError('Could not move {}'.format(device.name()))
 

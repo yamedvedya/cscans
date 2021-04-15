@@ -15,10 +15,12 @@ from collections import OrderedDict
 if sys.version_info.major >= 3:
     from queue import Queue
     from queue import Empty as empty_queue
+
     old_python = False
 else:
     from Queue import Queue
     from Queue import Empty as empty_queue
+
     old_python = True
 
 # Sardana imports
@@ -36,6 +38,7 @@ from cs_data_collector import DataCollectorWorker
 from cs_movement import SerialMovement
 from cs_constants import *
 
+
 # ----------------------------------------------------------------------
 #
 # ----------------------------------------------------------------------
@@ -45,7 +48,7 @@ class CCScan(CSScan):
     def __init__(self, macro, waypointGenerator=None, periodGenerator=None,
                  moveables=[], env={}, constraints=[], extrainfodesc=[], move_mode='normal'):
         super(CCScan, self).__init__(macro, waypointGenerator, periodGenerator,
-                 moveables, env, constraints, extrainfodesc)
+                                     moveables, env, constraints, extrainfodesc)
 
         np.set_printoptions(precision=3)
 
@@ -72,7 +75,7 @@ class CCScan(CSScan):
 
         # here we get the class, which provides us all movement functionality
         self.movement = SerialMovement(move_mode, self.macro, self._physical_moveables,
-                                         [m.moveable.getName() for m in self.moveables], self._error_queue)
+                                       [m.moveable.getName() for m in self.moveables], self._error_queue)
 
         if self.macro.mode == 'dscan':
             self._original_positions = self.movement.physical_motors_positions()
@@ -109,7 +112,7 @@ class CCScan(CSScan):
                     except:
                         raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
 
-        #we need to pass this trigger to timer worker, so we do it first
+        # we need to pass this trigger to timer worker, so we do it first
         _data_collector_trigger = Queue()
 
         timer_set = False
@@ -197,8 +200,8 @@ class CCScan(CSScan):
         travel_time = waypoint["integ_time"] * (waypoint["npts"] - 1)
 
         for motor, start_position, final_position in zip(self._physical_moveables, waypoint['start_positions'],
-                                                               waypoint['positions']):
-            motor_travel_time = np.abs(final_position - start_position)/motor.velocity
+                                                         waypoint['positions']):
+            motor_travel_time = np.abs(final_position - start_position) / motor.velocity
             # recalculate cruise duration of motion at top velocity
             if motor_travel_time > travel_time:
                 self.macro.warning('The {} motor cannot travel with such high speed'.format(motor.name))
@@ -209,18 +212,18 @@ class CCScan(CSScan):
         overhead_time = 0
         _main_motor_found = False
         for idx, (motor, start_position, final_position) in enumerate(zip(self._physical_moveables,
-                                                                                waypoint['start_positions'],
-                                                                                waypoint['positions'])):
+                                                                          waypoint['start_positions'],
+                                                                          waypoint['positions'])):
             if start_position != final_position:
-                new_speed.append(np.abs((final_position-start_position)/travel_time))
-                overhead_time = max(overhead_time, motor.acceleration*new_speed[idx]/motor.velocity)
+                new_speed.append(np.abs((final_position - start_position) / travel_time))
+                overhead_time = max(overhead_time, motor.acceleration * new_speed[idx] / motor.velocity)
                 if not _main_motor_found:
                     _main_motor_found = True
                     if self._pilc_scan:
                         self._timer_worker.setup_main_motor(motor.name, start_position)
                     else:
                         self.movement.setup_main_motor(idx)
-                        self._movement_direction = np.sign(final_position-start_position)
+                        self._movement_direction = np.sign(final_position - start_position)
                         self._pos_start_measurements = start_position
                         monitor_motor_speed = new_speed[-1]
                         self._pos_stop_measurements = final_position
@@ -232,12 +235,12 @@ class CCScan(CSScan):
                                                                           waypoint['start_positions'],
                                                                           waypoint['positions'])):
 
-            disp_sign = np.sign(final_position-start_position)
-            acceleration_time = motor.acceleration*new_speed[idx]/motor.velocity
-            displacement_reach_max_vel = motor.velocity*np.square(acceleration_time)/(2*motor.acceleration)
+            disp_sign = np.sign(final_position - start_position)
+            acceleration_time = motor.acceleration * new_speed[idx] / motor.velocity
+            displacement_reach_max_vel = motor.velocity * np.square(acceleration_time) / (2 * motor.acceleration)
 
-            new_initial_pos = start_position - disp_sign*(displacement_reach_max_vel + new_speed[idx] *
-                                                          (overhead_time - acceleration_time))
+            new_initial_pos = start_position - disp_sign * (displacement_reach_max_vel + new_speed[idx] *
+                                                            (overhead_time - acceleration_time))
 
             if self._check_motor_limits(motor, new_initial_pos):
                 self._start_positions[0].append(new_initial_pos)
@@ -249,11 +252,11 @@ class CCScan(CSScan):
             self.macro.report_debug('new_final_pos {}'.format(new_final_pos))
             if self._check_motor_limits(motor, new_final_pos):
                 if start_position != final_position:
-                    self._command_lists[0].append(([new_speed[idx], np.round(new_final_pos, POSITION_ROUND)], ))
+                    self._command_lists[0].append(([new_speed[idx], np.round(new_final_pos, POSITION_ROUND)],))
                 else:
                     self._command_lists[0].append(None)
             else:
-                _reset_positions =True
+                _reset_positions = True
                 break
 
         if _reset_positions:
@@ -272,9 +275,9 @@ class CCScan(CSScan):
                 self.macro.output('Calculated positions for {}: start: {:.5f}, stop: {:.5f}'.format(motor.name,
                                                                                                     start, cmd[0][1]))
 
-        _integration_time_correction = travel_time/(waypoint["integ_time"] * waypoint["npts"])
+        _integration_time_correction = travel_time / (waypoint["integ_time"] * waypoint["npts"])
         self._integration_time = waypoint["integ_time"] * _integration_time_correction
-        self._pos_start_measurements -= self._movement_direction * monitor_motor_speed * self._integration_time/2
+        self._pos_start_measurements -= self._movement_direction * monitor_motor_speed * self._integration_time / 2
         if _integration_time_correction > 1:
             self.macro.warning(
                 'Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
@@ -324,7 +327,7 @@ class CCScan(CSScan):
         for part, (start, cmd_list) in enumerate(zip(self._start_positions, self._command_lists)):
             # move to start position
             if len(self._start_positions) > 1:
-                self.macro.output("Section {} of {}: moving to start position".format(part+1,
+                self.macro.output("Section {} of {}: moving to start position".format(part + 1,
                                                                                       len(self._start_positions)))
             self.movement.move_full_speed(start)
 
@@ -335,7 +338,7 @@ class CCScan(CSScan):
             self.motion_event.set()
             # move to waypoint end position
             if len(self._start_positions) > 1:
-                self.macro.output("Section {} of {}: start scan movement".format(part+1, len(self._start_positions)))
+                self.macro.output("Section {} of {}: start scan movement".format(part + 1, len(self._start_positions)))
 
             self.movement.move_slowed(cmd_list, monitor=self.macro.motion_monitor)
 
@@ -524,7 +527,7 @@ class CCScan(CSScan):
             pass
 
         env = self._env
-        env['acqtime'] = self._data_collector.last_collected_point*self._integration_time
+        env['acqtime'] = self._data_collector.last_collected_point * self._integration_time
         env['delaytime'] = time.time() - env['acqtime']
 
         if self.motion_event.is_set():
@@ -545,11 +548,14 @@ class CCScan(CSScan):
                     median = np.median(values)
                     if name not in ['Lambda', 'Timer', 'Data_collection'] and median > 1e-2:
                         self.macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.1f} max {:.1f}'.format(name,
-                                                                                                                  median*1e3,
-                                                                                                                  np.max(values)*1e3))
+                                                                                                                  median * 1e3,
+                                                                                                                  np.max(
+                                                                                                                      values) * 1e3))
                     else:
-                        self.macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values)*1e3, np.max(values)*1e3))
-                    data_to_save = np.vstack((data_to_save, np.array(values[:self._data_collector.last_collected_point])))
+                        self.macro.output('{:s}: median {:.4f} max {:.4f}'.format(name, np.median(values) * 1e3,
+                                                                                  np.max(values) * 1e3))
+                    data_to_save = np.vstack(
+                        (data_to_save, np.array(values[:self._data_collector.last_collected_point])))
                     header += name + ';'
                 except:
                     pass
