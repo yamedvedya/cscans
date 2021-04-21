@@ -528,6 +528,7 @@ class cscan_senv(Macro):
     def run(self):
         self.setEnv("LambdaDevice", "p23/lambdactrl/01")
         self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
+        self.setEnv("LambdaASAPOAnalysis", "p23/lambdaasapoanalysis/oh.01")
         self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
         self.setEnv("cscan_sync", True)
         self.setEnv("cscan_timeme", False)

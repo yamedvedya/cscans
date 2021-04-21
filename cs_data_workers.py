@@ -265,7 +265,8 @@ class LambdaRoiWorker(object):
         self.channel_name = 'Lambda'
 
         self.data_buffer = {}
-        self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+        self._online_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+        self._asapo_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaASAPOAnalysis'))
 
         self._worker = ExcThread(self._main_loop, 'lambda_worker', error_queue)
         self._worker.start()
@@ -273,15 +274,22 @@ class LambdaRoiWorker(object):
     # ----------------------------------------------------------------------
     def add_channel(self, source_info):
 
-        if 'atten' in source_info.label:
-            self._channels.append([int(source_info.label[-7])-1, source_info.label, source_info.full_name, True])
-            self._correction_needed = True
-
-        elif source_info.label == 'lmbd':
-            self._channels.append([-1, source_info.label, source_info.full_name, False])
+        if 'asapo' in source_info.label:
+            self._channels.append([self._asapo_proxy, int(source_info.label[-1]) - 1,
+                                   source_info.label, source_info.full_name, False])
 
         else:
-            self._channels.append([int(source_info.label[-1])-1, source_info.label, source_info.full_name, False])
+            if 'atten' in source_info.label:
+                self._channels.append([self._online_proxy, int(source_info.label[-7])-1,
+                                       source_info.label, source_info.full_name, True])
+                self._correction_needed = True
+
+            elif source_info.label == 'lmbd':
+                self._channels.append([None, None, source_info.label, source_info.full_name, False])
+
+            else:
+                self._channels.append([self._online_proxy, int(source_info.label[-1])-1,
+                                       source_info.label, source_info.full_name, False])
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
@@ -289,12 +297,12 @@ class LambdaRoiWorker(object):
             while not self._worker.stopped():
                 try:
                     point_to_collect = self._trigger.get(block=False)
-                    self._macro.report_debug('Lambda tigger {}'.format(point_to_collect))
+                    self._macro.report_debug('Lambda trigger {}'.format(point_to_collect))
                     _start_time = time.time()
                     self.data_buffer[point_to_collect] = {}
                     _success = False
                     while time.time() - _start_time < TIMEOUT_LAMBDA:
-                        if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
+                        if self._online_proxy.lastanalyzedframe >= point_to_collect + 1:
                             # self._macro.output('Got point after {}'.format(time.time() - _start_time))
                             _data_to_print = {}
                             if self._correction_needed:
@@ -302,11 +310,11 @@ class LambdaRoiWorker(object):
                             else:
                                 atten = 1
 
-                            for channel_num, label, full_name, need_correction in self._channels:
-                                if channel_num == -1:
+                            for source, channel_num, label, full_name, need_correction in self._channels:
+                                if channel_num is None:
                                     data = -1
                                 else:
-                                    data = self._device_proxy.getroiforframe([channel_num, point_to_collect + 1])
+                                    data = source.getroiforframe([channel_num, point_to_collect + 1])
                                     if need_correction:
                                         data *= atten
 
