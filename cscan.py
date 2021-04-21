@@ -30,25 +30,16 @@ from sardana.macroserver.macro import Macro, Type
 from sardana.macroserver.macros.hkl import _diffrac
 
 # cscans imports, always reloaded to track changes; ORDER IS IMPORTANT!!!!
-import cs_scancl
-import cs_pilc_workers
-import cs_axillary_functions
-import cs_data_workers
-import cs_data_collector
-import cs_hklcscan
-import cs_movement
-import cs_ccscan
-import cs_constants
-
-reload(cs_constants)
-reload(cs_axillary_functions)
-reload(cs_movement)
-reload(cs_pilc_workers)
-reload(cs_data_workers)
-reload(cs_data_collector)
-reload(cs_ccscan)
-reload(cs_hklcscan)
-reload(cs_scancl)
+import cs_scancl; reload(cs_scancl)
+import cs_constants; reload(cs_constants)
+import cs_axillary_functions; reload(cs_axillary_functions)
+import cs_pilc_workers; reload(cs_pilc_workers)
+import cs_data_workers; reload(cs_data_workers)
+import cs_data_collector; reload(cs_data_collector)
+import cs_movement; reload(cs_movement)
+import cs_setup_detectors; reload(cs_setup_detectors)
+import cs_ccscan; reload(cs_ccscan)
+import cs_hklcscan; reload(cs_hklcscan)
 
 from cs_scancl import aNcscan
 from cs_constants import *
@@ -526,13 +517,14 @@ class cscan_senv(Macro):
     """ Sets default environment variables """
 
     def run(self):
-        self.setEnv("LambdaDevice", "p23/lambdactrl/01")
-        self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
-        self.setEnv("LambdaASAPOAnalysis", "p23/lambdaasapoanalysis/oh.01")
-        self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
+        # self.setEnv("LambdaDevice", "p23/lambdactrl/01")
+        # self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
+        # self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
+        self.setEnv("PilatusDevice", "p09/pilatus/300k")
+        self.setEnv("PilatusAnalysis", "p09/pilatusanalysis/300k")
         self.setEnv("cscan_sync", True)
-        self.setEnv("cscan_timeme", False)
-        self.setEnv("cscan_debug", False)
+        self.setEnv("cscan_timeme", True)
+        self.setEnv("cscan_debug", True)
         self.setEnv("cscan_monitor", False)
 
 
@@ -545,6 +537,7 @@ class cscan_set_pilc(Macro):
         PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x05, 0x01, 0x03])
         PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([0x03, 0x01, 0x03])
 
+
 # ----------------------------------------------------------------------
 #                       Auxiliary function
 # ----------------------------------------------------------------------
@@ -556,6 +549,7 @@ def _reload():
     reload(cs_pilc_workers)
     reload(cs_data_workers)
     reload(cs_data_collector)
+    reload(cs_setup_detectors)
     reload(cs_ccscan)
     reload(cs_hklcscan)
     reload(cs_scancl)
