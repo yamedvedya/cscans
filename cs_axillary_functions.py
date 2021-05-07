@@ -67,7 +67,7 @@ class ExcThread(threading.Thread):
             tr = sys.exc_info()[2]
             while tr.tb_next is not None:
                 tr = tr.tb_next
-            self.bucket.put([self._name, sys.exc_info()[1], tr])
+            self.bucket.put([self._name, sys.exc_info()[1], traceback.print_tb(tr)])
         finally:
             self.status = 'finished'
 

@@ -99,13 +99,14 @@ class TimerWorker(object):
 
                     self._timing_logger['Position_measurement'].append(_timing)
 
-                    if _position > _timer_start_position:
-                        if _position == _last_position:
-                            self._macro.report_debug('Timer stops due to repeating position {}'.format(_position))
+                    _main_motor_position = self._movement.get_main_motor_position()
+                    if _main_motor_position > _timer_start_position:
+                        if _main_motor_position == _last_position:
+                            self._macro.report_debug('Timer stops due to repeating position {}'.format(_main_motor_position))
                             break
 
                     self._point += 1
-                    _last_position = _position
+                    _last_position = _main_motor_position
 
                     _start_time2 = time.time()
                     self._data_collector_trigger.put([self._point, time.time() - _acq_start_time, _position])
