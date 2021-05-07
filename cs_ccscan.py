@@ -116,7 +116,7 @@ class CCScan(CSScan):
         _data_collector_trigger = Queue()
 
         timer_set = False
-        if PLIC_MODE:
+        if PILC_MODE:
             self._pilc_scan = timer_set = self._setup_pilc(_2d_detector_triggers, _data_collector_trigger)
 
         if not timer_set:
@@ -148,6 +148,8 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def _setup_tango_workers(self, detector_triggers, _data_collector_trigger):
 
+        # self._timing_logger['Total_point_time'] = []
+        self._timing_logger['Point_preparation'] = []
         self._timing_logger['Point_dead_time'] = []
         self._timing_logger['Timer'] = []
         self._timing_logger['Data_collection'] = []
@@ -195,9 +197,11 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def calculate_speed(self, waypoint):
 
-        """ In case of ctscan - everything is kind of simple"""
-
-        travel_time = waypoint["integ_time"] * (waypoint["npts"] - 1)
+        if not self._pilc_scan:
+            self.macro.report_debug('Additional point delay: {}'.format(ADDITIONAL_POINT_DELAY))
+            travel_time = (waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * (waypoint["npts"] - 1)
+        else:
+            travel_time = waypoint["integ_time"] * (waypoint["npts"] - 1)
 
         for motor, start_position, final_position in zip(self._physical_moveables, waypoint['start_positions'],
                                                          waypoint['positions']):
@@ -275,9 +279,17 @@ class CCScan(CSScan):
                 self.macro.output('Calculated positions for {}: start: {:.5f}, stop: {:.5f}'.format(motor.name,
                                                                                                     start, cmd[0][1]))
 
-        _integration_time_correction = travel_time / (waypoint["integ_time"] * waypoint["npts"])
+        if not self._pilc_scan:
+            _integration_time_correction = travel_time / \
+                                           ((waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * waypoint["npts"])
+        else:
+            _integration_time_correction = travel_time / (waypoint["integ_time"] * waypoint["npts"])
+
         self._integration_time = waypoint["integ_time"] * _integration_time_correction
-        self._pos_start_measurements -= self._movement_direction * monitor_motor_speed * self._integration_time / 2
+
+        if not self._pilc_scan:
+            self._pos_start_measurements -= self._movement_direction * monitor_motor_speed * self._integration_time / 2
+
         if _integration_time_correction > 1:
             self.macro.warning(
                 'Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
@@ -298,6 +310,18 @@ class CCScan(CSScan):
                 return False
         else:
             return True
+
+    # ----------------------------------------------------------------------
+    def _calibrate_pilcs_encoders(self):
+        for motor_name, encoder_data in PILC_MOTORS_MAP.items():
+            try:
+                tng_addr = self.macro.getMotor(motor_name).full_name.replace('tango://', '')
+                getattr(PyTango.DeviceProxy(PILC_TRIGGERS[encoder_data['device']]),
+                        'CalibrateEncoder{}'.format(encoder_data['encoder']))(PyTango.DeviceProxy(tng_addr).Position)
+            except Exception as err:
+                self.macro.report_debug('Cannot calibrate {} at PILC {}: {}'.format(encoder_data['encoder'],
+                                                                                    encoder_data['device'], err))
+                raise
 
     # ----------------------------------------------------------------------
     def _go_through_waypoints(self):
@@ -353,6 +377,8 @@ class CCScan(CSScan):
         self.macro.report_debug("scan loop() entering...")
 
         self._scan_in_process = True
+        if self._pilc_scan:
+            self._calibrate_pilcs_encoders()
 
         if hasattr(self.macro, 'getHooks'):
             for hook in self.macro.getHooks('pre-move-hooks'):
@@ -388,8 +414,7 @@ class CCScan(CSScan):
             except empty_queue:
                 pass
             else:
-                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
-                                                                                          err[2].tb_lineno))
+                self.macro.report_debug('Thread {} got an exception {}, traceback {}'.format(err[0], err[1], err[2]))
                 return
 
             time.sleep(REFRESH_PERIOD)
@@ -546,7 +571,7 @@ class CCScan(CSScan):
             for name, values in self._timing_logger.items():
                 try:
                     median = np.median(values)
-                    if name not in ['Lambda', 'Timer', 'Data_collection'] and median > 1e-2:
+                    if name not in ['Lambda', 'Timer', 'Data_collection', 'Total_point_time'] and median > 1e-2:
                         self.macro.warning('ATTENTION!!! SLOW DETECTOR!!!! {:s}: median {:.1f} max {:.1f}'.format(name,
                                                                                                                   median * 1e3,
                                                                                                                   np.max(

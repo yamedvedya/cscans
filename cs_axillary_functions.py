@@ -9,6 +9,7 @@ import threading
 import sys
 import numpy as np
 import PyTango
+import traceback
 
 from cs_constants import *
 
@@ -63,8 +64,10 @@ class ExcThread(threading.Thread):
             else:
                 self.ret = self._target(*self._args, **self._kwargs)
         except Exception as exp:
-            # traceback.print_tb(sys.exc_info()[2])
-            self.bucket.put([self._name, sys.exc_info()[0], sys.exc_info()[2]])
+            tr = sys.exc_info()[2]
+            while tr.tb_next is not None:
+                tr = tr.tb_next
+            self.bucket.put([self._name, sys.exc_info()[1], tr])
         finally:
             self.status = 'finished'
 

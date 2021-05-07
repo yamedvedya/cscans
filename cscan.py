@@ -30,7 +30,6 @@ from sardana.macroserver.macro import Macro, Type
 from sardana.macroserver.macros.hkl import _diffrac
 
 # cscans imports, always reloaded to track changes; ORDER IS IMPORTANT!!!!
-import cs_scancl; reload(cs_scancl)
 import cs_constants; reload(cs_constants)
 import cs_axillary_functions; reload(cs_axillary_functions)
 import cs_pilc_workers; reload(cs_pilc_workers)
@@ -40,6 +39,7 @@ import cs_movement; reload(cs_movement)
 import cs_setup_detectors; reload(cs_setup_detectors)
 import cs_ccscan; reload(cs_ccscan)
 import cs_hklcscan; reload(cs_hklcscan)
+import cs_scancl; reload(cs_scancl)
 
 from cs_scancl import aNcscan
 from cs_constants import *
@@ -75,7 +75,7 @@ class acscan(aNcscan):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'ascan'
 
@@ -108,7 +108,7 @@ class dcscan(aNcscan):
 
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'dscan'
 
@@ -140,7 +140,7 @@ class a2cscan(aNcscan):
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'a2scan'
 
@@ -172,7 +172,7 @@ class d2cscan(aNcscan):
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'd2scan'
 
@@ -210,7 +210,7 @@ class hcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'hscan'
 
@@ -245,7 +245,7 @@ class hdcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'hscan'
 
@@ -280,7 +280,7 @@ class lcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'lscan'
 
@@ -315,7 +315,7 @@ class ldcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'lscan'
 
@@ -350,7 +350,10 @@ class kcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
+        _reload(self)
+
         self.name = 'kscan'
+
         _diffrac.prepare(self)
 
         self._prepare('ascan', 'reciprocal', [self.k_device], np.array([start_pos], dtype='d'),
@@ -382,7 +385,7 @@ class kdcscan(aNcscan, _diffrac):
 
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'kscan'
 
@@ -422,7 +425,7 @@ class hklcscan(aNcscan, _diffrac):
     def prepare(self, h_start_pos, h_stop_pos, k_start_pos, k_stop_pos,
                 l_start_pos, l_stop_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'hklscan'
 
@@ -463,7 +466,7 @@ class hkldcscan(aNcscan, _diffrac):
     def prepare(self, h_start_pos, h_stop_pos, k_start_pos, k_stop_pos,
                 l_start_pos, l_stop_pos, nb_steps, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'hklscan'
 
@@ -492,7 +495,7 @@ class ctscan(aNcscan):
 
     def prepare(self, total_time, integ_time, **opts):
 
-        _reload()
+        _reload(self)
 
         self.name = 'ctscan'
 
@@ -517,9 +520,10 @@ class cscan_senv(Macro):
     """ Sets default environment variables """
 
     def run(self):
-        # self.setEnv("LambdaDevice", "p23/lambdactrl/01")
-        # self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
-        # self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
+        self.setEnv("LambdaDevice", "p23/lambdactrl/01")
+        self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
+        self.setEnv("LambdaASAPOAnalysis", "p23/lambdaasapoanalysis/oh.01")
+        self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
         self.setEnv("PilatusDevice", "p09/pilatus/300k")
         self.setEnv("PilatusAnalysis", "p09/pilatusanalysis/300k")
         self.setEnv("cscan_sync", True)
@@ -542,14 +546,15 @@ class cscan_set_pilc(Macro):
 #                       Auxiliary function
 # ----------------------------------------------------------------------
 
-def _reload():
+def _reload(self):
     reload(cs_constants)
     reload(cs_axillary_functions)
     reload(cs_movement)
+    reload(cs_setup_detectors)
     reload(cs_pilc_workers)
     reload(cs_data_workers)
     reload(cs_data_collector)
-    reload(cs_setup_detectors)
     reload(cs_ccscan)
     reload(cs_hklcscan)
     reload(cs_scancl)
+    # self.info('Libs reloaded!')

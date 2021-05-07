@@ -48,6 +48,7 @@ class TimerWorker(object):
         self._time_acq = []
 
         self._paused = False
+        self._stopped = False
 
         self._timing_logger = timing_logger
 
@@ -58,7 +59,8 @@ class TimerWorker(object):
         _acq_start_time = time.time()
         try:
             _timer_start_position = _last_position = self._movement.get_main_motor_position()
-            while not self._worker.stopped():
+            _last_point_time = time.time()
+            while not self._stopped: #self._worker.stopped():
 
                 if not self._paused:
                     self._macro.report_debug('Start timer point {}'.format(self._point + 1))
@@ -68,6 +70,8 @@ class TimerWorker(object):
                     _end_position = None
                     _position_time2 = None
 
+                    self._timing_logger['Point_preparation'].append(time.time() - _last_point_time)
+
                     if MOTORS_POSITION_LOGIC in ['before', 'center']:
                         _start_time = time.time()
                         _start_position = self._movement.get_motors_position()
@@ -75,7 +79,8 @@ class TimerWorker(object):
 
                     _start_time = time.time()
                     self._device_proxy.StartAndWaitForTimer()
-                    self._timing_logger['Timer'].append(time.time() - _start_time)
+                    _timer_time = time.time() - _start_time
+                    self._timing_logger['Timer'].append(_timer_time)
 
                     if MOTORS_POSITION_LOGIC in ['center', 'after']:
                         _start_time = time.time()
@@ -112,7 +117,10 @@ class TimerWorker(object):
                         time.sleep(REFRESH_PERIOD)
 
                     self._timing_logger['Data_collection'].append(time.time() - _start_time2)
-                    self._timing_logger['Point_dead_time'].append(time.time() - _start_time)
+                    _point_time = time.time() - _last_point_time
+                    self._timing_logger['Point_dead_time'].append(_point_time - _timer_time)
+                    # self._timing_logger['Total_point_time'].append(_point_time)
+                    _last_point_time = time.time()
                 else:
                     time.sleep(REFRESH_PERIOD)
 
@@ -130,7 +138,8 @@ class TimerWorker(object):
 
     # ----------------------------------------------------------------------
     def stop(self):
-        self._worker.stop()
+        self._stopped = True
+        # self._worker.stop()
         while self._worker.status == 'running':
             time.sleep(REFRESH_PERIOD)
         return self._point
@@ -261,7 +270,10 @@ class DetectorWorker(object):
         self.data_buffer = {}
 
         if detector == 'lmbd':
-            self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
+            if LAMBDA_MODE == 'ASAPO':
+                self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaASAPOAnalysis'))
+            else:
+                self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
             self.channel_name = 'Lambda'
         elif detector == 'p300':
             self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('PilatusAnalysis'))
@@ -283,14 +295,14 @@ class DetectorWorker(object):
     def add_channel(self, source_info):
 
         if 'atten' in source_info.label:
-            self._channels.append([int(source_info.label[-7]) - 1, source_info.label, source_info.full_name, True])
+            self._channels.append([int(source_info.label[-7]), source_info.label, source_info.full_name, True])
             self._correction_needed = True
 
         elif source_info.label in ['lmbd', 'p300']:
             self._channels.append([-1, source_info.label, source_info.full_name, False])
 
         else:
-            self._channels.append([int(source_info.label[-1]) - 1, source_info.label, source_info.full_name, False])
+            self._channels.append([int(source_info.label[-1]), source_info.label, source_info.full_name, False])
 
     # ----------------------------------------------------------------------
     def _main_loop(self):

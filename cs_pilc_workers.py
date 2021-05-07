@@ -27,7 +27,7 @@ class PILCWorker(object):
         self._macro = macro
 
         for motor in movables:
-            if motor not in PLIC_MOTORS_MAP.keys():
+            if motor not in PILC_MOTORS_MAP.keys():
                 # self._macro.warning('{} is not linked to any PiLC, tango scan will be performed'.format(motor))
                 raise CannotDoPilc()
         self._movables = movables
@@ -38,7 +38,7 @@ class PILCWorker(object):
                 self._timer_name = channel_info.full_name
             elif 'lmbd' in channel_info.label:
                 pass
-            elif channel_info.label not in PLIC_DETECTOR_MAP.keys():
+            elif channel_info.label not in PILC_DETECTOR_MAP.keys():
                 if self._macro.ask_user('{} is not linked to any PiLC. Do tango scan?'.format(channel_info.label)):
                     raise CannotDoPilc()
                 else:
@@ -49,9 +49,9 @@ class PILCWorker(object):
         self._data_collector_trigger = data_collector_trigger
         self._detector_triggers = detector_triggers
 
-        self._trigger_generators = [PyTango.DeviceProxy(device) for device in PLIC_TRIGGERS]
-        self._counter = PyTango.DeviceProxy(PLIC_COUNTER)
-        self._adc = PyTango.DeviceProxy(PLIC_ADC)
+        self._trigger_generators = [PyTango.DeviceProxy(device) for device in PILC_TRIGGERS]
+        self._counter = PyTango.DeviceProxy(PILC_COUNTER)
+        self._adc = PyTango.DeviceProxy(PILC_ADC)
 
         f_name = os.path.splitext(self._macro.getEnv('ScanFile')[0])[0] + \
                                 '_{}_' + '{:05d}'.format(self._macro.getEnv('ScanID'))
@@ -120,25 +120,25 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def _get_point_for_detector(self, detector, point):
-        if PLIC_DETECTOR_MAP[detector]['device'] == 'TG0':
+        if PILC_DETECTOR_MAP[detector]['device'] == 'TG0':
             device = self._trigger_generators[0]
-        elif PLIC_DETECTOR_MAP[detector]['device'] == 'TG1':
+        elif PILC_DETECTOR_MAP[detector]['device'] == 'TG1':
             device = self._trigger_generators[1]
-        elif PLIC_DETECTOR_MAP[detector]['device'] == 'CT':
+        elif PILC_DETECTOR_MAP[detector]['device'] == 'CT':
             device = self._counter
-        elif PLIC_DETECTOR_MAP[detector]['device'] == 'ADC':
+        elif PILC_DETECTOR_MAP[detector]['device'] == 'ADC':
             device = self._adc
         else:
             raise RuntimeError('Wrong PiLC for {}!'.format(detector))
 
-        return getattr(device, PLIC_DETECTOR_MAP[detector]['attribute'])[point]
+        return getattr(device, PILC_DETECTOR_MAP[detector]['attribute'])[point]
 
     # ----------------------------------------------------------------------
     def _get_positions_for_point(self, point):
         _position = []
         for motor in self._movables:
-            _position.append(getattr(self._trigger_generators[PLIC_MOTORS_MAP[motor]['device']],
-                                     'Position{}Data'.format(PLIC_MOTORS_MAP[motor]['encoder']))[point])
+            _position.append(getattr(self._trigger_generators[PILC_MOTORS_MAP[motor]['device']],
+                                     'Position{}Data'.format(PILC_MOTORS_MAP[motor]['encoder']))[point])
         return np.array(_position)
 
     # ----------------------------------------------------------------------
@@ -160,11 +160,11 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def setup_main_motor(self, motor, start_position):
-        self._main_trigger = int(PLIC_MOTORS_MAP[motor]['device'])
+        self._main_trigger = int(PILC_MOTORS_MAP[motor]['device'])
 
         self._trigger_generators[self._main_trigger].PositionTriggerStart = start_position
         self._trigger_generators[self._main_trigger].TriggerMode = 3
-        self._trigger_generators[self._main_trigger].EncoderTriggering = PLIC_MOTORS_MAP[motor]['encoder']
+        self._trigger_generators[self._main_trigger].EncoderTriggering = PILC_MOTORS_MAP[motor]['encoder']
 
         if len(self._trigger_generators) > 1:
             self._slave_trigger = int(not int(self._main_trigger))

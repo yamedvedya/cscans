@@ -6,10 +6,16 @@ Author yury.matveev@desy.de
 
 # General timeout to interrupt scan
 TIMEOUT = 5
-# Special timout for Lambda
-TIMEOUT_DETECTORS = 3
+# Special timout for non-sync detector
+TIMEOUT_DETECTORS = 5
 # General delay on loops (to decrease processor load)
-REFRESH_PERIOD = 1e-4
+REFRESH_PERIOD = 1e-5
+
+#Stupid staff, but:
+ADDITIONAL_POINT_DELAY = 35e-3
+
+#TEMP for tests
+LAMBDA_MODE = 'ASAPO'
 
 # which position is taken as "point" position
 MOTORS_POSITION_LOGIC = 'center' # 'before', 'center' or 'after'
@@ -40,17 +46,17 @@ TIMER_PREFIXES = ('eh_t', 'exp_t')
 DETECTOR_NAMES = ('lmbd', 'p300')
 
 # do we use pilc or not:
-PLIC_MODE = False
+PILC_MODE = True
 
 PILC_DETECTOR_DELAY = 1 # ms
 PILC_TRIGGER_TIME = 0.1 #ms
 
 # PILC addresses:
-PLIC_TRIGGERS = ['p23/pilctriggergenerator/dev.01', 'p23/pilctriggergenerator/dev.02']
-PLIC_COUNTER = 'p23/pilcscanslave/exp.03'
-PLIC_ADC = 'p23/pilcscanslave/exp.04'
+PILC_TRIGGERS = ['p23/pilctriggergenerator/dev.01', 'p23/pilctriggergenerator/dev.02']
+PILC_COUNTER = 'p23/pilcscanslave/exp.03'
+PILC_ADC = 'p23/pilcscanslave/exp.04'
 
-PLIC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
+PILC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
                    'gy': {'device': 0, 'encoder': 2},
                    'gz': {'device': 0, 'encoder': 4},
                    'omega': {'device': 0, 'encoder': 3},
@@ -61,7 +67,7 @@ PLIC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
                    'chi': {'device': 1, 'encoder': 3},
                    'mu': {'device': 1, 'encoder': 5}}
 
-PLIC_DETECTOR_MAP = {'eh_c01': {'device': 'TG0', 'attribute': 'CounterData'}}
+PILC_DETECTOR_MAP = {'eh_c01': {'device': 'CT', 'attribute': 'Counter1Data'}}
 
 TMP_FILE = '/tmp/cscan_motor_backup'
 
