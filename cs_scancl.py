@@ -67,6 +67,14 @@ class CscanClass(Hookable):
 
         # do we need to syncro motors
         try:
+            self.pilc_mode = self.getEnv('cscan_pilc')
+            self.report_debug('pilc_mode: {}'.format(self.pilc_mode))
+        except Exception as err:
+            self.report_debug('Cannot get cscan_pilc, pilc_mode set to False')
+            self.pilc_mode = False
+
+        # do we need to syncro motors
+        try:
             self._sync = self.getEnv('cscan_sync')
         except Exception as err:
             self._sync = True

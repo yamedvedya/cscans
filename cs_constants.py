@@ -9,7 +9,7 @@ TIMEOUT = 5
 # Special timout for non-sync detector
 TIMEOUT_DETECTORS = 5
 # General delay on loops (to decrease processor load)
-REFRESH_PERIOD = 1e-5
+REFRESH_PERIOD = 1e-4
 
 #Stupid staff, but:
 ADDITIONAL_POINT_DELAY = 35e-3
@@ -44,9 +44,6 @@ LIN_MOVE_THRESHOLD = 1e-2
 COUNTER_NAMES = ('sis3820',)
 TIMER_PREFIXES = ('eh_t', 'exp_t')
 DETECTOR_NAMES = ('lmbd', 'p300')
-
-# do we use pilc or not:
-PILC_MODE = True
 
 PILC_DETECTOR_DELAY = 1 # ms
 PILC_TRIGGER_TIME = 0.1 #ms

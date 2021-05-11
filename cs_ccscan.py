@@ -116,8 +116,10 @@ class CCScan(CSScan):
         _data_collector_trigger = Queue()
 
         timer_set = False
-        if PILC_MODE:
+        if self.macro.pilc_mode: #PILC_MODE:
             self._pilc_scan = timer_set = self._setup_pilc(_2d_detector_triggers, _data_collector_trigger)
+            if self._pilc_scan:
+                self.macro.info('Cscan will be performed by PILC')
 
         if not timer_set:
             self._setup_tango_workers(_2d_detector_triggers, _data_collector_trigger)
@@ -281,9 +283,9 @@ class CCScan(CSScan):
 
         if not self._pilc_scan:
             _integration_time_correction = travel_time / \
-                                           ((waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * waypoint["npts"])
+                                           ((waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * (waypoint["npts"] - 1))
         else:
-            _integration_time_correction = travel_time / (waypoint["integ_time"] * waypoint["npts"])
+            _integration_time_correction = travel_time / (waypoint["integ_time"] * (waypoint["npts"] - 1))
 
         self._integration_time = waypoint["integ_time"] * _integration_time_correction
 

@@ -26,9 +26,11 @@ class PILCWorker(object):
         self._error_queue = error_queue
         self._macro = macro
 
+        self._time_scan = False
         for motor in movables:
-            if motor not in PILC_MOTORS_MAP.keys():
-                # self._macro.warning('{} is not linked to any PiLC, tango scan will be performed'.format(motor))
+            if motor == DUMMY_MOTOR:
+                self._time_scan = True
+            elif motor not in PILC_MOTORS_MAP.keys() or self._time_scan:
                 raise CannotDoPilc()
         self._movables = movables
 
@@ -87,6 +89,7 @@ class PILCWorker(object):
                         _start_time = time.time()
 
                     if self._trigger_generators[self._main_trigger].TriggerCounter > self.last_collected_point + 1:
+                        time.sleep(self._integration_time)
                         _new_point = self.last_collected_point + 1
                         self._macro.report_debug('Got point {}'.format(_new_point))
 
@@ -136,9 +139,12 @@ class PILCWorker(object):
     # ----------------------------------------------------------------------
     def _get_positions_for_point(self, point):
         _position = []
-        for motor in self._movables:
-            _position.append(getattr(self._trigger_generators[PILC_MOTORS_MAP[motor]['device']],
-                                     'Position{}Data'.format(PILC_MOTORS_MAP[motor]['encoder']))[point])
+        if self._time_scan:
+            _position = [self._integration_time*point]
+        else:
+            for motor in self._movables:
+                _position.append(getattr(self._trigger_generators[PILC_MOTORS_MAP[motor]['device']],
+                                         'Position{}Data'.format(PILC_MOTORS_MAP[motor]['encoder']))[point])
         return np.array(_position)
 
     # ----------------------------------------------------------------------
@@ -160,11 +166,15 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def setup_main_motor(self, motor, start_position):
-        self._main_trigger = int(PILC_MOTORS_MAP[motor]['device'])
-
-        self._trigger_generators[self._main_trigger].PositionTriggerStart = start_position
-        self._trigger_generators[self._main_trigger].TriggerMode = 3
-        self._trigger_generators[self._main_trigger].EncoderTriggering = PILC_MOTORS_MAP[motor]['encoder']
+        if self._time_scan:
+            self._main_trigger = 0
+            self._trigger_generators[self._main_trigger].TimeTriggerStart = start_position
+            self._trigger_generators[self._main_trigger].TriggerMode = 2
+        else:
+            self._main_trigger = int(PILC_MOTORS_MAP[motor]['device'])
+            self._trigger_generators[self._main_trigger].PositionTriggerStart = start_position
+            self._trigger_generators[self._main_trigger].TriggerMode = 3
+            self._trigger_generators[self._main_trigger].EncoderTriggering = PILC_MOTORS_MAP[motor]['encoder']
 
         if len(self._trigger_generators) > 1:
             self._slave_trigger = int(not int(self._main_trigger))

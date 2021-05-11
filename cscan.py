@@ -530,6 +530,7 @@ class cscan_senv(Macro):
         self.setEnv("cscan_timeme", True)
         self.setEnv("cscan_debug", True)
         self.setEnv("cscan_monitor", False)
+        self.setEnv("cscan_pilc", True)
 
 
 class cscan_set_pilc(Macro):
