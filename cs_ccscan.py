@@ -216,15 +216,15 @@ class CCScan(CSScan):
         _reset_positions = False
         new_speed = []
         overhead_time = 0
-        _main_motor_found = False
+        _main_motor = None
         for idx, (motor, start_position, final_position) in enumerate(zip(self._physical_moveables,
                                                                           waypoint['start_positions'],
                                                                           waypoint['positions'])):
             if start_position != final_position:
                 new_speed.append(np.abs((final_position - start_position) / travel_time))
                 overhead_time = max(overhead_time, motor.acceleration * new_speed[idx] / motor.velocity)
-                if not _main_motor_found:
-                    _main_motor_found = True
+                if _main_motor is None:
+                    _main_motor = idx
                     if self._pilc_scan:
                         self._timer_worker.setup_main_motor(motor.name, start_position)
                     else:
@@ -233,9 +233,21 @@ class CCScan(CSScan):
                         self._pos_start_measurements = start_position
                         monitor_motor_speed = new_speed[-1]
                         self._pos_stop_measurements = final_position
-                self.macro.output('Calculated speed for {} is {}'.format(motor.name, new_speed[idx]))
+                self.macro.output('Calculated speed for {} is {:.6f}'.format(motor.name, new_speed[idx]))
             else:
                 new_speed.append(0)
+
+        if self._pilc_scan:
+            motor = self._physical_moveables[_main_motor]
+            acceleration_time = motor.acceleration * new_speed[_main_motor] / motor.velocity
+            displacement = motor.velocity * np.square(acceleration_time) / (2 * motor.acceleration) \
+                                         + new_speed[_main_motor] * (overhead_time - acceleration_time)
+
+            if displacement < PILC_MINIMUM_DISPLACEMENT:
+                self.macro.report_debug('overhead_time need corrections due to small start displacement')
+                overhead_time += (PILC_MINIMUM_DISPLACEMENT - displacement)/new_speed[_main_motor]
+
+        self.macro.report_debug('overhead_time {:.5f}'.format(overhead_time))
 
         for idx, (motor, start_position, final_position) in enumerate(zip(self._physical_moveables,
                                                                           waypoint['start_positions'],
@@ -243,10 +255,14 @@ class CCScan(CSScan):
 
             disp_sign = np.sign(final_position - start_position)
             acceleration_time = motor.acceleration * new_speed[idx] / motor.velocity
+            self.macro.report_debug('{} acceleration_time {:.5f}'.format(motor.name, acceleration_time))
+
             displacement_reach_max_vel = motor.velocity * np.square(acceleration_time) / (2 * motor.acceleration)
 
             new_initial_pos = start_position - disp_sign * (displacement_reach_max_vel + new_speed[idx] *
                                                             (overhead_time - acceleration_time))
+
+            self.macro.report_debug('original start {:.5f}, corrected {:.5f}'.format(start_position, new_initial_pos))
 
             if self._check_motor_limits(motor, new_initial_pos):
                 self._start_positions[0].append(new_initial_pos)
@@ -255,7 +271,7 @@ class CCScan(CSScan):
                 break
 
             new_final_pos = final_position + disp_sign * displacement_reach_max_vel
-            self.macro.report_debug('new_final_pos {}'.format(new_final_pos))
+            self.macro.report_debug('original stop {:.5f}, corrected {:.5f}'.format(final_position, new_final_pos))
             if self._check_motor_limits(motor, new_final_pos):
                 if start_position != final_position:
                     self._command_lists[0].append(([new_speed[idx], np.round(new_final_pos, POSITION_ROUND)],))

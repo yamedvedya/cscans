@@ -66,5 +66,7 @@ PILC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
 
 PILC_DETECTOR_MAP = {'eh_c01': {'device': 'CT', 'attribute': 'Counter1Data'}}
 
+PILC_MINIMUM_DISPLACEMENT = 0.01
+
 TMP_FILE = '/tmp/cscan_motor_backup'
 
