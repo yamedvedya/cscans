@@ -295,7 +295,14 @@ class DetectorWorker(object):
     # ----------------------------------------------------------------------
     def add_channel(self, source_info):
 
-        if 'atten' in source_info.label:
+        if 'diff' in source_info.label:
+            if 'atten' in source_info.label:
+                self._channels.append(['diff', source_info.label, source_info.full_name, True])
+                self._correction_needed = True
+            else:
+                self._channels.append(['diff', source_info.label, source_info.full_name, False])
+
+        elif 'atten' in source_info.label:
             self._channels.append([int(source_info.label[-7]), source_info.label, source_info.full_name, True])
             self._correction_needed = True
 
@@ -326,6 +333,10 @@ class DetectorWorker(object):
                             for channel_num, label, full_name, need_correction in self._channels:
                                 if channel_num == -1:
                                     data = -1
+                                elif channel_num == 'diff':
+                                    data = self._device_proxy.GetRoiDiffForFrame(point_to_collect + 1)
+                                    if need_correction:
+                                        data *= atten
                                 else:
                                     data = self._device_proxy.getroiforframe([channel_num, point_to_collect + 1])
                                     if need_correction:

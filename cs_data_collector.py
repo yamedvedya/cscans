@@ -56,7 +56,7 @@ class DataCollectorWorker(object):
                     _last_started_point, _end_time, _motor_positions = self._point_trigger.get(block=False)
                 except empty_queue:
                     self.status = 'waiting'
-                    time.sleep(0.1)
+                    time.sleep(REFRESH_PERIOD)
                 else:
                     _not_reported = ''
                     self.status = 'collecting'
@@ -112,7 +112,25 @@ class DataCollectorWorker(object):
         self._step_info = step_info
 
     # ----------------------------------------------------------------------
-    def stop(self):
+    def stop(self, integration_time):
+        last_point = self.last_collected_point
+        _got_time_out = False
+        while not _got_time_out and self.status != 'finished':
+            _timeout_start_time = time.time()
+            while time.time() < _timeout_start_time + TIMEOUT:
+                time.sleep(integration_time)
+                if self.last_collected_point != last_point or self.status == 'finished':
+                    break
+            if self.last_collected_point == last_point and self.status != 'finished':
+                _got_time_out = True
+                break
+            else:
+                last_point = self.last_collected_point
+
+        if _got_time_out:
+            self._macro.report_debug("Cannot stop DataCollector, waits for {}, collected {}".format(
+                self._stop_after, self.last_collected_point))
+
         self._worker.stop()
         while self._worker.status == 'running':
             time.sleep(REFRESH_PERIOD)

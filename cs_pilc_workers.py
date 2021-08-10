@@ -41,10 +41,8 @@ class PILCWorker(object):
             elif 'lmbd' in channel_info.label:
                 pass
             elif channel_info.label not in PILC_DETECTOR_MAP.keys():
-                if self._macro.ask_user('{} is not linked to any PiLC. Do tango scan?'.format(channel_info.label)):
-                    raise CannotDoPilc()
-                else:
-                    raise RuntimeError('Cannot do PiLC scan')
+                self._macro.warning('{} is not linked to any PiLC. The software scan will be performed')
+                raise CannotDoPilc()
             else:
                 self._channels.append([channel_info.label, channel_info.full_name])
 
@@ -75,12 +73,13 @@ class PILCWorker(object):
         self.data_buffer = {}
 
         self.last_collected_point = 0
+        self.npts = 0
         self._paused = True
         self._worker = ExcThread(self._main_loop, 'plic_worker', error_queue)
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
-        _start_time = None
+        _start_time = time.time()
         try:
             while not self._worker.stopped():
                 if not self._paused:
@@ -88,24 +87,32 @@ class PILCWorker(object):
                         self._macro.report_debug('Timer: new start time saved')
                         _start_time = time.time()
 
-                    if self._trigger_generators[self._main_trigger].TriggerCounter > self.last_collected_point + 1:
+                    while self._trigger_generators[self._main_trigger].TriggerCounter > self.last_collected_point + 1:
                         time.sleep(self._integration_time)
                         _new_point = self.last_collected_point + 1
+                        if _new_point >= self.npts:
+                            break
+
                         self._macro.report_debug('Got point {}'.format(_new_point))
 
-                        if MOTORS_POSITION_LOGIC == 'before':
-                            _position = self._get_positions_for_point(_new_point-1)
+                        try:
+                            if MOTORS_POSITION_LOGIC == 'before':
+                                _position = self._get_positions_for_point(_new_point-1)
 
-                        elif MOTORS_POSITION_LOGIC == 'center':
-                            _position = (self._get_positions_for_point(_new_point-1) +
-                                         self._get_positions_for_point(_new_point))/2
-                        else:
-                            _position = self._get_positions_for_point(_new_point)
+                            elif MOTORS_POSITION_LOGIC == 'center':
+                                _position = (self._get_positions_for_point(_new_point-1) +
+                                             self._get_positions_for_point(_new_point))/2
+                            else:
+                                _position = self._get_positions_for_point(_new_point)
 
-                        self.data_buffer[_new_point] = {self._timer_name: self._integration_time}
-                        for name, full_name in self._channels:
-                            self.data_buffer[_new_point][full_name] = self._get_point_for_detector(name, _new_point)
+                            _point_data = {self._timer_name: self._integration_time}
+                            for name, full_name in self._channels:
+                                _point_data[full_name] = self._get_point_for_detector(name, _new_point)
+                        except IndexError:
+                            self._macro.warning(f'Point {_new_point} was not read!')
+                            break
 
+                        self.data_buffer[_new_point] = _point_data
                         self.last_collected_point = _new_point
                         for trigger in self._detector_triggers:
                             trigger.put(self.last_collected_point)
@@ -192,6 +199,8 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def set_npts(self, npts):
+        self._macro.report_debug(f'PiLC NPTS {npts}')
+        self.npts = npts
         self._trigger_generators[self._main_trigger].NbTriggers = npts + 2
 
         if len(self._trigger_generators) > 1:

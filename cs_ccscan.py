@@ -541,19 +541,11 @@ class CCScan(CSScan):
             self.movement.stop_move()
 
         # Get last started point and set it to data collector
-        self._data_collector.set_last_point(self._timer_worker.stop())
-
-        self.macro.report_debug("waiting for data collector finishes")
-
+        _last_point_to_read = self._timer_worker.stop()
+        self._data_collector.set_last_point(_last_point_to_read)
+        self.macro.report_debug(f"waiting for data collector finishes {_last_point_to_read} points")
+        self._data_collector.stop(self._integration_time)
         self.macro.report_debug('Data collector state: {}'.format(self._data_collector.status))
-        _timeout_start_time = time.time()
-        while time.time() < _timeout_start_time + TIMEOUT and not self._data_collector.is_finished():
-            time.sleep(self._integration_time)
-
-        if not self._data_collector.is_finished():
-            self.macro.report_debug("Cannot stop DataCollector, waits for {}, collected {}".format(
-                self._data_collector._stop_after, self._data_collector.last_collected_point))
-            self._data_collector.stop()
 
         for worker in self._data_workers:
             worker.stop()

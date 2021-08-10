@@ -46,11 +46,6 @@ class CscanClass(Hookable):
         self.nsteps = nb_steps
         self.integ_time = integ_time
 
-        if self.integ_time < 0.1:
-            if not self.ask_user("The {} integration time is too short for continuous scans. Recommended > 0.1 sec. Continue?".format(self.integ_time)):
-                self.do_scan = False
-                return
-
         self._step_info = {"start_positions": self.start_pos, "positions": self.final_pos,
                "integ_time": self.integ_time, "npts": self.nsteps}
 
@@ -72,6 +67,11 @@ class CscanClass(Hookable):
         except Exception as err:
             self.report_debug('Cannot get cscan_pilc, pilc_mode set to False')
             self.pilc_mode = False
+
+        if self.integ_time < 0.02 and not self.pilc_mode:
+            if not self.ask_user("The {} integration time is too short for continuous scans. Recommended > 0.02 sec. Continue?".format(self.integ_time)):
+                self.do_scan = False
+                return
 
         # do we need to syncro motors
         try:
@@ -235,10 +235,10 @@ class CscanClass(Hookable):
     # ----------------------------------------------------------------------
     def report_debug(self, msg):
         # general function that prints debug information
+        self.debug(msg)
         if self.debug_mode:
-            self.debug(msg)
-            # with open(self._debug_file_name, 'a') as f:
-            #     f.write(str(msg) + '\n')
+            with open(self._debug_file_name, 'a') as f:
+                f.write(str(msg) + '\n')
 
     # ----------------------------------------------------------------------
     def ask_user(self, msg):

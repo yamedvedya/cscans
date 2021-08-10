@@ -5,9 +5,9 @@ Author yury.matveev@desy.de
 '''
 
 # General timeout to interrupt scan
-TIMEOUT = 5
+TIMEOUT = 15
 # Special timout for non-sync detector
-TIMEOUT_DETECTORS = 5
+TIMEOUT_DETECTORS = 15
 # General delay on loops (to decrease processor load)
 REFRESH_PERIOD = 1e-4
 
@@ -46,7 +46,7 @@ TIMER_PREFIXES = ('eh_t', 'exp_t')
 DETECTOR_NAMES = ('lmbd', 'p300')
 
 PILC_DETECTOR_DELAY = 1 # ms
-PILC_TRIGGER_TIME = 0.1 #ms
+PILC_TRIGGER_TIME = 0.5 #ms
 
 # PILC addresses:
 PILC_TRIGGERS = ['p23/pilctriggergenerator/dev.01', 'p23/pilctriggergenerator/dev.02']
