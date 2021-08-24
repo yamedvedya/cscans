@@ -15,7 +15,7 @@ REFRESH_PERIOD = 1e-4
 ADDITIONAL_POINT_DELAY = 35e-3
 
 #TEMP for tests
-LAMBDA_MODE = 'ASAPO'
+LAMBDA_MODE = 'ONLINE'
 
 # which position is taken as "point" position
 MOTORS_POSITION_LOGIC = 'center' # 'before', 'center' or 'after'

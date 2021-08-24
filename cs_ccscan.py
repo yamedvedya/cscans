@@ -233,7 +233,7 @@ class CCScan(CSScan):
                         self._pos_start_measurements = start_position
                         monitor_motor_speed = new_speed[-1]
                         self._pos_stop_measurements = final_position
-                self.macro.output('Calculated speed for {} is {:.6f}'.format(motor.name, new_speed[idx]))
+                self.macro.output('Calculated speed for {} is {:.6f} (original: {:.6f})'.format(motor.name, new_speed[idx], motor.velocity))
             else:
                 new_speed.append(0)
 
@@ -475,8 +475,7 @@ class CCScan(CSScan):
             except empty_queue:
                 pass
             else:
-                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
-                                                                                          err[2].tb_lineno))
+                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2]))
                 return
 
             time.sleep(REFRESH_PERIOD)

@@ -131,9 +131,9 @@ class SerialMovement(object):
                 time.sleep(MOTOR_POSITION_REFRESH_PERIOD)
 
         except Exception as err:
-
             self._macro.error('Motion logging error!:' + err)
             # self._error_queue.put(err)
+            raise
 
         if _output_file is not None:
             _output_file.close()
@@ -223,7 +223,7 @@ class SerialMovement(object):
 
         except Exception as err:
             self._macro.error('Error during move: {}'.format(err))
-            self._error_queue.put(err)
+            raise
 
     # ----------------------------------------------------------------------
     def move_slowed(self, command_lists, mode='sync', monitor=False):
@@ -253,7 +253,7 @@ class SerialMovement(object):
 
         except Exception as err:
             self._macro.error('Error during move: {}'.format(err))
-            self._error_queue.put(err)
+            raise
 
 
 # ---------------------------------------------------------------------

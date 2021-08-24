@@ -65,8 +65,8 @@ class ExcThread(threading.Thread):
                 self.ret = self._target(*self._args, **self._kwargs)
         except Exception as exp:
             tr = sys.exc_info()[2]
-            while tr.tb_next is not None:
-                tr = tr.tb_next
+            # while tr.tb_next is not None:
+            #     tr = tr.tb_next
             self.bucket.put([self._name, sys.exc_info()[1], traceback.print_tb(tr)])
         finally:
             self.status = 'finished'
