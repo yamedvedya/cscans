@@ -9,13 +9,24 @@ import threading
 import sys
 import numpy as np
 import PyTango
-import traceback
 
 from cs_constants import *
 
+
+# ----------------------------------------------------------------------
+def get_channel_tango_device(channel_info):
+    return PyTango.DeviceProxy(channel_info.full_name.strip('tango://'))
+
+
+# ----------------------------------------------------------------------
 def get_tango_device(channel_info):
-    device = PyTango.DeviceProxy(channel_info.full_name.strip('tango://'))
-    return device.tangodevice
+    return get_channel_tango_device(channel_info).tangodevice
+
+
+# ----------------------------------------------------------------------
+def get_channel_source(channel_info):
+    tockens = get_channel_tango_device(channel_info).TangoAttribute.split('/')
+    return '/'.join(tockens[:-1]), tockens[-1]
 
 # ----------------------------------------------------------------------
 #
@@ -63,11 +74,8 @@ class ExcThread(threading.Thread):
                 self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
             else:
                 self.ret = self._target(*self._args, **self._kwargs)
-        except Exception as exp:
-            tr = sys.exc_info()[2]
-            # while tr.tb_next is not None:
-            #     tr = tr.tb_next
-            self.bucket.put([self._name, sys.exc_info()[1], traceback.print_tb(tr)])
+        except:
+            self.bucket.put([self._name, sys.exc_info()])
         finally:
             self.status = 'finished'
 

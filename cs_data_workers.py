@@ -9,6 +9,7 @@ Author yury.matveev@desy.de
 import PyTango
 import time
 import sys
+import re
 
 if sys.version_info.major >= 3:
     from queue import Empty as empty_queue
@@ -16,7 +17,7 @@ else:
     from Queue import Empty as empty_queue
 
 # cscans imports
-from cs_axillary_functions import ExcThread, get_tango_device
+from cs_axillary_functions import ExcThread, get_tango_device, get_channel_source
 from cs_constants import *
 
 # ----------------------------------------------------------------------
@@ -50,6 +51,8 @@ class TimerWorker(object):
         self._paused = False
         self._stopped = False
 
+        self._timer_period = None
+
         self._timing_logger = timing_logger
 
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
@@ -78,7 +81,15 @@ class TimerWorker(object):
                         _position_time1 = time.time() - _start_time
 
                     _start_time = time.time()
-                    self._device_proxy.StartAndWaitForTimer()
+
+                    if self._timer_period < 3:
+                        self._device_proxy.StartAndWaitForTimer()
+
+                    else:
+                        self._device_proxy.Start()
+                        time.sleep(self._timer_period - 1)
+                        self._device_proxy.WaitForTimer()
+
                     _timer_time = time.time() - _start_time
                     self._timing_logger['Timer'].append(_timer_time)
 
@@ -152,6 +163,7 @@ class TimerWorker(object):
     # ----------------------------------------------------------------------
     def set_new_period(self, period):
         self._device_proxy.SampleTime = period
+        self._timer_period = period
 
 
 # ----------------------------------------------------------------------
@@ -268,19 +280,10 @@ class DetectorWorker(object):
         self.timeout = 0
 
         self._channels = []
+        self._proxies = {}
         self.data_buffer = {}
 
-        if detector == 'lmbd':
-            if LAMBDA_MODE == 'ASAPO':
-                self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaASAPOAnalysis'))
-            else:
-                self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('LambdaOnlineAnalysis'))
-            self.channel_name = 'Lambda'
-        elif detector == 'p300':
-            self._device_proxy = PyTango.DeviceProxy(self._macro.getEnv('PilatusAnalysis'))
-            self.channel_name = 'Pilatus'
-        else:
-            raise RuntimeError('Unknown detector!')
+        self.channel_name = detector
 
         self._timing_logger[self.channel_name] = []
         self._correction_needed = False
@@ -295,22 +298,31 @@ class DetectorWorker(object):
     # ----------------------------------------------------------------------
     def add_channel(self, source_info):
 
-        if 'diff' in source_info.label:
-            if 'atten' in source_info.label:
-                self._channels.append(['diff', source_info.label, source_info.full_name, True])
-                self._correction_needed = True
-            else:
-                self._channels.append(['diff', source_info.label, source_info.full_name, False])
-
-        elif 'atten' in source_info.label:
-            self._channels.append([int(source_info.label[-7]), source_info.label, source_info.full_name, True])
-            self._correction_needed = True
-
-        elif source_info.label in ['lmbd', 'p300']:
-            self._channels.append([-1, source_info.label, source_info.full_name, False])
-
+        if source_info.label == self.channel_name:
+            address = None
+            dev_to_add = [None, None, None, source_info.label, source_info.full_name, False]
         else:
-            self._channels.append([int(source_info.label[-1]), source_info.label, source_info.full_name, False])
+            if 'countsroi' in source_info.name:
+                address = self._macro.getEnv('LambdaOnlineAnalysis')
+                attribute = source_info.name
+            else:
+                address, attribute = get_channel_source(source_info)
+            if address not in self._proxies:
+                self._proxies[address] = PyTango.DeviceProxy(address)
+
+            if 'diff' in attribute:
+                server_function = 'GetRoiDiffForFrame'
+                channel = None
+            else:
+                server_function = 'GetRoiForFrame'
+                channel = int(re.findall(r'\d+', attribute)[0])
+
+            need_correction = 'atten' in attribute
+
+            dev_to_add = [address, server_function, channel, source_info.label, source_info.full_name, need_correction]
+
+        self._channels.append(dev_to_add)
+        return address
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
@@ -323,22 +335,26 @@ class DetectorWorker(object):
                     self.data_buffer[point_to_collect] = {}
                     _success = False
                     while time.time() - _start_time < TIMEOUT_DETECTORS:
-                        if self._device_proxy.lastanalyzedframe >= point_to_collect + 1:
+                        frame_is_analyzed = True
+                        for proxy in self._proxies.values():
+                            frame_is_analyzed *= proxy.lastanalyzedframe >= point_to_collect + 1
+
+                        if frame_is_analyzed:
                             _data_to_print = {}
                             if self._correction_needed and self._attenuator_proxy is not None:
                                 atten = self._attenuator_proxy.Position
                             else:
                                 atten = 1
 
-                            for channel_num, label, full_name, need_correction in self._channels:
-                                if channel_num == -1:
+                            for proxy, function, channel, label, full_name, need_correction in self._channels:
+                                if proxy is None:
                                     data = -1
-                                elif channel_num == 'diff':
-                                    data = self._device_proxy.GetRoiDiffForFrame(point_to_collect + 1)
-                                    if need_correction:
-                                        data *= atten
                                 else:
-                                    data = self._device_proxy.getroiforframe([channel_num, point_to_collect + 1])
+                                    if channel is None:
+                                        data = getattr(self._proxies[proxy], function)(point_to_collect + 1)
+                                    else:
+                                        data = getattr(self._proxies[proxy], function)([channel, point_to_collect + 1])
+
                                     if need_correction:
                                         data *= atten
 

@@ -10,6 +10,7 @@ import time
 import os
 import PyTango
 import numpy as np
+import traceback
 from collections import OrderedDict
 
 if sys.version_info.major >= 3:
@@ -25,10 +26,9 @@ else:
 
 # Sardana imports
 
-from sardana.macroserver.macro import macro
 from sardana.macroserver.scan import CSScan
 
-# cscans imports, always reloaded to track changes
+# cscans imports
 
 from cs_axillary_functions import EndMeasurementBarrier, ExcThread, CannotDoPilc, get_tango_device
 from cs_setup_detectors import setup_detector, stop_detector
@@ -90,7 +90,8 @@ class CCScan(CSScan):
         self._data_workers = []
 
         # Lambda has a personal worker, which joins Lambda and LambdaOnlineAnalysis
-        self._2d_detectors = []
+        self._2d_detectors = {}
+        self._analysis_devices = []
         self._2d_detector_workers = {}
         _2d_detector_triggers = []
 
@@ -105,12 +106,14 @@ class CCScan(CSScan):
                                                                          self._timing_logger)
                         _2d_detector_triggers.append(trigger)
                         self._data_workers.append(self._2d_detector_workers[name])
-                        self._2d_detectors.append(name)
-
+                        self._2d_detectors[name] = get_tango_device(channel_info)
                     try:
-                        self._2d_detector_workers[name].add_channel(channel_info)
+                        analysis_device = self._2d_detector_workers[name].add_channel(channel_info)
+                        if analysis_device is not None:
+                            if analysis_device not in self._analysis_devices:
+                                self._analysis_devices.append(analysis_device)
                     except:
-                        raise RuntimeError('The {} detector is not supported in continuous scans'.format(channel_info.label))
+                        raise RuntimeError(f'The {channel_info.label} detector is not supported in continuous scans')
 
         # we need to pass this trigger to timer worker, so we do it first
         _data_collector_trigger = Queue()
@@ -357,8 +360,7 @@ class CCScan(CSScan):
         self._data_collector.set_new_step_info(step_info)
         self._timer_worker.set_new_period(self._integration_time)
 
-        for detector in self._2d_detectors:
-            setup_detector(detector, self.macro, self._pilc_scan, self._integration_time)
+        setup_detector(self._2d_detectors, self._analysis_devices, self.macro, self._pilc_scan, self._integration_time)
 
         for worker in self._2d_detector_workers.values():
             worker.set_timeout(self._integration_time)
@@ -416,6 +418,18 @@ class CCScan(CSScan):
 
         yield 100
 
+    # --------------------------------------------------------------------
+    def _check_for_errors(self):
+        try:
+            err = self._error_queue.get(block=False)
+        except empty_queue:
+            return False
+        else:
+            self.macro.error(f'Error during script: {err[1][1]}')
+            tr_to_print = ''.join(traceback.format_tb(err[1][2]))
+            self.macro.report_debug(f'Thread {err[0]} got an exception {err[1][1]}\n {tr_to_print}')
+            return True
+
     # ----------------------------------------------------------------------
     def _pilc_loop(self):
 
@@ -427,12 +441,7 @@ class CCScan(CSScan):
             if self.macro.isStopped():
                 return
 
-            try:
-                err = self._error_queue.get(block=False)
-            except empty_queue:
-                pass
-            else:
-                self.macro.report_debug('Thread {} got an exception {}, traceback {}'.format(err[0], err[1], err[2]))
+            if self._check_for_errors():
                 return
 
             time.sleep(REFRESH_PERIOD)
@@ -442,13 +451,7 @@ class CCScan(CSScan):
             if self.macro.isStopped():
                 break
 
-            try:
-                err = self._error_queue.get(block=False)
-            except empty_queue:
-                pass
-            else:
-                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
-                                                                                          err[2].tb_lineno))
+            if self._check_for_errors():
                 break
 
         self.macro.report_debug("Scan done, motion {}, timer {}".format(self.motion_event.is_set(),
@@ -470,12 +473,7 @@ class CCScan(CSScan):
             if self.macro.isStopped():
                 return
 
-            try:
-                err = self._error_queue.get(block=False)
-            except empty_queue:
-                pass
-            else:
-                self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1], err[2]))
+            if self._check_for_errors():
                 return
 
             time.sleep(REFRESH_PERIOD)
@@ -492,16 +490,7 @@ class CCScan(CSScan):
                 self.macro.report_debug("current main motor position {}, waiting for {}".format(
                     self.movement.get_main_motor_position(), self._pos_start_measurements))
 
-            try:
-                err = self._error_queue.get(block=False)
-            except empty_queue:
-                pass
-            else:
-                if err is list:
-                    self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
-                                                                                              err[2].tb_lineno))
-                else:
-                    self.macro.report_debug('Got an exception {} '.format(err))
+            if self._check_for_errors():
                 return
 
         self._timer_worker.start()
@@ -512,17 +501,7 @@ class CCScan(CSScan):
             if self.macro.isStopped():
                 break
 
-            try:
-                err = self._error_queue.get(block=False)
-            except empty_queue:
-                pass
-            else:
-                if err is list:
-                    self.macro.report_debug('Thread {} got an exception {} at line {}'.format(err[0], err[1],
-                                                                                              err[2].tb_lineno))
-                else:
-                    self.macro.report_debug('Got an exception {} '.format(err))
-
+            if self._check_for_errors():
                 break
 
             if _check_position(self._pos_stop_measurements):
