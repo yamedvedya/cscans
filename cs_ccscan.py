@@ -599,8 +599,7 @@ class CCScan(CSScan):
         if os.path.exists(TMP_FILE):
             os.remove(TMP_FILE)
 
-        for detector in self._2d_detectors:
-            stop_detector(detector, self.macro)
+        stop_detector(self._2d_detectors, self._analysis_devices, self.macro)
 
         if self.macro.mode == 'dscan':
             self.macro.output("Returning to start positions {}".format(self._original_positions))

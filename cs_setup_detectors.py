@@ -49,17 +49,17 @@ def setup_detector(detectors, analysises, macro, pilc_scan, integ_time):
         else:
             raise RuntimeError('Unknown detector')
 
-    _time_out = time.time()
-    while _detector_proxy.State() not in [PyTango.DevState.MOVING, PyTango.DevState.RUNNING] \
-            and time.time() - _time_out < TIMEOUT_DETECTORS:
-        time.sleep(0.1)
-        macro.checkPoint()
+        _time_out = time.time()
+        while _detector_proxy.State() not in [PyTango.DevState.MOVING, PyTango.DevState.RUNNING] \
+                and time.time() - _time_out < TIMEOUT_DETECTORS:
+            time.sleep(0.1)
+            macro.checkPoint()
 
-    if _detector_proxy.State() not in [PyTango.DevState.MOVING, PyTango.DevState.RUNNING]:
-        macro.output(f'{detector} state: {_detector_proxy.State()}')
-        raise RuntimeError(f'Cannot start {detector}')
+        if _detector_proxy.State() not in [PyTango.DevState.MOVING, PyTango.DevState.RUNNING]:
+            macro.output(f'{detector} state: {_detector_proxy.State()}')
+            raise RuntimeError(f'Cannot start {detector}')
 
-    macro.report_debug(f'{detector} state after setup: {_detector_proxy.State()}')
+        macro.report_debug(f'{detector} state after setup: {_detector_proxy.State()}')
 
     for analysis in analysises:
         _analysis_proxy = PyTango.DeviceProxy(analysis)
@@ -76,55 +76,44 @@ def setup_detector(detectors, analysises, macro, pilc_scan, integ_time):
             macro.checkPoint()
 
         if _analysis_proxy.State() != PyTango.DevState.MOVING:
-            raise RuntimeError(f'Cannot start {detector}')
+            raise RuntimeError(f'Cannot start {analysis}')
 
-        macro.report_debug(f'{detector} state after setup: {_analysis_proxy.State()}')
+        macro.report_debug(f'{analysis} state after setup: {_analysis_proxy.State()}')
 
 
 # ----------------------------------------------------------------------
-def stop_detector(detector, macro):
-    macro.report_debug('Stopping {} Analysis'.format(detector))
-    if detector == 'lmbd':
-        if LAMBDA_MODE == 'ASAPO':
-            _analysis_proxy = PyTango.DeviceProxy(macro.getEnv('LambdaASAPOAnalysis'))
+def stop_detector(detectors, analysises, macro):
+    for analysis in analysises:
+        macro.report_debug(f'Stopping {analysis}')
+        _analysis_proxy = PyTango.DeviceProxy(analysis)
+
+        _analysis_proxy.StopAnalysis()
+        time.sleep(0.1)
+
+        _time_out = time.time()
+        while _analysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
+            time.sleep(0.1)
+
+        if _analysis_proxy.State() != PyTango.DevState.ON:
+            macro.output(f'Cannot stop {analysis}!')
+
+    for detector in detectors.values():
+        macro.report_debug(f'Stopping {detector}')
+
+        _detector_proxy = PyTango.DeviceProxy(detector)
+
+        _detector_proxy.StopAcq()
+
+        _time_out = time.time()
+        while _detector_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
+            time.sleep(0.1)
+
+        if _detector_proxy.State() == PyTango.DevState.ON:
+            if 'lambda' in detector:
+                _detector_proxy.FrameNumbers = 1
+            elif 'p300' in detector:\
+                _detector_proxy.NbFrames = 1
+
+            _detector_proxy.TriggerMode = 0
         else:
-            _analysis_proxy = PyTango.DeviceProxy(macro.getEnv('LambdaOnlineAnalysis'))
-    elif detector == 'p300':
-        _analysis_proxy = PyTango.DeviceProxy(macro.getEnv('PilatusAnalysis'))
-    else:
-        raise RuntimeError('Unknown detector')
-
-    _analysis_proxy.StopAnalysis()
-    time.sleep(0.1)
-
-    _time_out = time.time()
-    while _analysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
-        time.sleep(0.1)
-
-    if _analysis_proxy.State() != PyTango.DevState.ON:
-        macro.output('Cannot stop Analysis!')
-
-    macro.report_debug('Stopping {}'.format(detector))
-
-    if detector == 'lmbd':
-        _detector_proxy = PyTango.DeviceProxy(macro.getEnv('LambdaDevice'))
-    elif detector == 'p300':
-        _detector_proxy = PyTango.DeviceProxy(macro.getEnv('PilatusDevice'))
-    else:
-        raise RuntimeError('Unknown detector!')
-
-    _detector_proxy.StopAcq()
-
-    _time_out = time.time()
-    while _detector_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
-        time.sleep(0.1)
-
-    if _detector_proxy.State() == PyTango.DevState.ON:
-        if detector == 'lmbd':
-            _detector_proxy.FrameNumbers = 1
-        elif detector == 'p300':
-            _detector_proxy.NbFrames = 1
-
-        _detector_proxy.TriggerMode = 0
-    else:
-        macro.output('Cannot reset {}! Check the settings.'.format(detector))
+            macro.output(f'Cannot reset {detector}! Check the settings.')

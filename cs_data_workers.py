@@ -348,12 +348,12 @@ class DetectorWorker(object):
 
                             for proxy, function, channel, label, full_name, need_correction in self._channels:
                                 if proxy is None:
-                                    data = -1
+                                    data = -1.0
                                 else:
                                     if channel is None:
-                                        data = getattr(self._proxies[proxy], function)(point_to_collect + 1)
+                                        data = float(getattr(self._proxies[proxy], function)(point_to_collect + 1))
                                     else:
-                                        data = getattr(self._proxies[proxy], function)([channel, point_to_collect + 1])
+                                        data = float(getattr(self._proxies[proxy], function)([channel, point_to_collect + 1]))
 
                                     if need_correction:
                                         data *= atten
