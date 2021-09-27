@@ -4,18 +4,16 @@ This file contains all constants, needed by cscans
 Author yury.matveev@desy.de
 '''
 
-# General timeout to interrupt scan
-TIMEOUT = 15
-# Special timout for non-sync detector
-TIMEOUT_DETECTORS = 15
-# General delay on loops (to decrease processor load)
+# General timeout to interrupt scan:
+TIMEOUT = 5
+# Special timeout for non-sync detector (e.g. ASAPO):
+TIMEOUT_DETECTORS = 5
+# General refresh delay on loops (to decrease processor load)
 REFRESH_PERIOD = 1e-4
 
-#Stupid staff, but:
+# Stupid staff, but:
+# this delay is added to each point to do better calculation of motor speed:
 ADDITIONAL_POINT_DELAY = 35e-3
-
-#TEMP for tests
-LAMBDA_MODE = 'ONLINE'
 
 # which position is taken as "point" position
 MOTORS_POSITION_LOGIC = 'center' # 'before', 'center' or 'after'
@@ -44,6 +42,8 @@ LIN_MOVE_THRESHOLD = 1e-2
 COUNTER_NAMES = ('sis3820',)
 TIMER_PREFIXES = ('eh_t', 'exp_t')
 DETECTOR_NAMES = ('lmbd', 'p300')
+
+# PILC setup:
 
 PILC_DETECTOR_DELAY = 1 # ms
 PILC_TRIGGER_TIME = 0.5 #ms

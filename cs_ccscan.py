@@ -265,7 +265,8 @@ class CCScan(CSScan):
             new_initial_pos = start_position - disp_sign * (displacement_reach_max_vel + new_speed[idx] *
                                                             (overhead_time - acceleration_time))
 
-            self.macro.report_debug('original start {:.5f}, corrected {:.5f}'.format(start_position, new_initial_pos))
+            self.macro.report_debug('{} original start {:.5f}, corrected {:.5f}'.format(motor.name,
+                                                                                        start_position, new_initial_pos))
 
             if self._check_motor_limits(motor, new_initial_pos):
                 self._start_positions[0].append(new_initial_pos)
@@ -274,7 +275,8 @@ class CCScan(CSScan):
                 break
 
             new_final_pos = final_position + disp_sign * displacement_reach_max_vel
-            self.macro.report_debug('original stop {:.5f}, corrected {:.5f}'.format(final_position, new_final_pos))
+            self.macro.report_debug('{} original stop {:.5f}, corrected {:.5f}'.format(motor.name,
+                                                                                       final_position, new_final_pos))
             if self._check_motor_limits(motor, new_final_pos):
                 if start_position != final_position:
                     self._command_lists[0].append(([new_speed[idx], np.round(new_final_pos, POSITION_ROUND)],))

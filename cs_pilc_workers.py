@@ -90,6 +90,9 @@ class PILCWorker(object):
                     while self._trigger_generators[self._main_trigger].TriggerCounter > self.last_collected_point + 1:
                         time.sleep(self._integration_time)
                         _new_point = self.last_collected_point + 1
+                        if _new_point == 1:
+                            time.sleep(1)  # TODO better solution
+
                         if _new_point >= self.npts:
                             break
 

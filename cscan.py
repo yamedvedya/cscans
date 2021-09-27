@@ -50,9 +50,8 @@ from cs_constants import *
 
 # ----------------------------------------------------------------------
 class acscan(aNcscan):
-
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous absolut scan
 
     """
 
@@ -72,7 +71,7 @@ class acscan(aNcscan):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -84,9 +83,8 @@ class acscan(aNcscan):
 
 # ----------------------------------------------------------------------
 class dcscan(aNcscan):
-
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous relative scan
 
     """
 
@@ -106,6 +104,7 @@ class dcscan(aNcscan):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
+    # ----------------------------------------------------------------------
     def prepare(self, motor, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -118,6 +117,11 @@ class dcscan(aNcscan):
 
 # ----------------------------------------------------------------------
 class a2cscan(aNcscan):
+    """
+        Performs a continuous absolut scan with 2 motors
+
+    """
+
     # this is used to indicate other codes that the macro is a scan
     hints = {'scan': 'a2scan', 'allowsHooks': ('pre-scan', 'pre-move',
                                                 'post-move', 'pre-acq',
@@ -137,6 +141,7 @@ class a2cscan(aNcscan):
         ['integ_time',      Type.Float,     None, 'Integration time']
     ]
 
+    # ----------------------------------------------------------------------
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
@@ -150,6 +155,11 @@ class a2cscan(aNcscan):
 
 # ----------------------------------------------------------------------
 class d2cscan(aNcscan):
+    """
+        Performs a continuous relative scan with 2 motors
+
+    """
+
     # this is used to indicate other codes that the macro is a scan
     hints = {'scan': 'd2cscan', 'allowsHooks': ('pre-scan', 'pre-move',
                                                 'post-move', 'pre-acq',
@@ -169,6 +179,7 @@ class d2cscan(aNcscan):
         ['integ_time',      Type.Float,     None, 'Integration time']
     ]
 
+    # ----------------------------------------------------------------------
     def prepare(self, motor1, start_pos1, final_pos1, motor2, start_pos2,
                 final_pos2, nb_steps, integ_time, **opts):
 
@@ -187,8 +198,8 @@ class d2cscan(aNcscan):
 # ----------------------------------------------------------------------
 class hcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous absolute scan in reciprocal space along H axis
 
     """
 
@@ -207,7 +218,7 @@ class hcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -222,8 +233,8 @@ class hcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class hdcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous relative scan in reciprocal space along H axis
 
     """
 
@@ -242,7 +253,7 @@ class hdcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -257,8 +268,8 @@ class hdcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class lcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous absolute scan in reciprocal space along L axis
 
     """
 
@@ -277,7 +288,7 @@ class lcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -292,8 +303,8 @@ class lcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class ldcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous relative scan in reciprocal space along L axis
 
     """
 
@@ -312,7 +323,7 @@ class ldcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -327,8 +338,8 @@ class ldcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class kcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous absolute scan in reciprocal space along K axis
 
     """
 
@@ -347,7 +358,7 @@ class kcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -362,9 +373,8 @@ class kcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class kdcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
-
+    """
+        Performs a continuous relative scan in reciprocal space along K axis
     """
 
     # this is used to indicate other codes that the macro is a scan
@@ -382,7 +392,7 @@ class kdcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, start_pos, final_pos, nb_steps, integ_time, **opts):
 
         _reload(self)
@@ -397,8 +407,8 @@ class kdcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class hklcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
+    """
+        Performs a continuous absolute scan in reciprocal space along HKL axes
 
     """
 
@@ -421,7 +431,7 @@ class hklcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, h_start_pos, h_stop_pos, k_start_pos, k_stop_pos,
                 l_start_pos, l_stop_pos, nb_steps, integ_time, **opts):
 
@@ -438,9 +448,8 @@ class hklcscan(aNcscan, _diffrac):
 # ----------------------------------------------------------------------
 class hkldcscan(aNcscan, _diffrac):
 
-    """ Performs a continuous scan taking current Active Measurement Group
-        In case if the Lambda configured - set it to
-
+    """
+        Performs a continuous relative scan in reciprocal space along HKL axes
     """
 
     # this is used to indicate other codes that the macro is a scan
@@ -462,7 +471,7 @@ class hkldcscan(aNcscan, _diffrac):
         ['integ_time',      Type.Float,     None,   'Integration time'],
     ]
 
-
+    # ----------------------------------------------------------------------
     def prepare(self, h_start_pos, h_stop_pos, k_start_pos, k_stop_pos,
                 l_start_pos, l_stop_pos, nb_steps, integ_time, **opts):
 
@@ -480,6 +489,11 @@ class hkldcscan(aNcscan, _diffrac):
 #       Time scan
 # ----------------------------------------------------------------------
 class ctscan(aNcscan):
+
+    """
+        Performs a continuous time scan
+    """
+
     # this is used to indicate other codes that the macro is a scan
     hints = {'scan': 'ctscan', 'allowsHooks': ('pre-scan', 'pre-move',
                                                 'post-move', 'pre-acq',
@@ -493,6 +507,7 @@ class ctscan(aNcscan):
         ['integ_time',      Type.Float,     None, 'Integration time']
     ]
 
+    # ----------------------------------------------------------------------
     def prepare(self, total_time, integ_time, **opts):
 
         _reload(self)
@@ -508,6 +523,7 @@ class ctscan(aNcscan):
         self._prepare('tscan', 'real', [motor], np.array([0], dtype='d'),
                       np.array([total_time], dtype='d'), int(total_time/integ_time) + 1, integ_time, **opts)
 
+    # ----------------------------------------------------------------------
     def getCommand(self):
         return 'ascan {} 0 {} {} {}'.format(DUMMY_MOTOR, self.final_pos[0], self.nsteps, self.integ_time)
 
@@ -520,12 +536,9 @@ class cscan_senv(Macro):
     """ Sets default environment variables """
 
     def run(self):
-        self.setEnv("LambdaDevice", "p23/lambdactrl/01")
-        self.setEnv("LambdaOnlineAnalysis", "p23/lambdaonlineanalysis/oh.01")
-        self.setEnv("LambdaASAPOAnalysis", "p23/lambdaasapoanalysis/oh.01")
-        self.setEnv("AttenuatorProxy", "p23/vmexecutor/attenuatorposition")
-        self.setEnv("PilatusDevice", "p09/pilatus/300k")
-        self.setEnv("PilatusAnalysis", "p09/pilatusanalysis/300k")
+        self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
+        self.setEnv("LambdaASAPOAnalysis", "hasep23oh:10000/p23/lambdaasapoanalysis/oh.01")
+        self.setEnv("AttenuatorProxy", "hasep23oh:10000/p23/vmexecutor/attenuatorposition")
         self.setEnv("cscan_sync", True)
         self.setEnv("cscan_timeme", True)
         self.setEnv("cscan_debug", True)
@@ -533,8 +546,12 @@ class cscan_senv(Macro):
         self.setEnv("cscan_pilc", True)
 
 
+# ----------------------------------------------------------------------
+#         IMPORTANT section! If channels are wrong configured, PILC can be broken!!
+# ----------------------------------------------------------------------
+
 class cscan_set_pilc(Macro):
-    """ Sets default environment variables """
+    """ The trigger inputs should be NIM"""
 
     def run(self):
         PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([0x03, 0x01, 0x03])
