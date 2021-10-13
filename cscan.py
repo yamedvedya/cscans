@@ -56,10 +56,8 @@ class acscan(aNcscan):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'ascan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'ascan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -89,10 +87,8 @@ class dcscan(aNcscan):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'dscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'dscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -123,10 +119,8 @@ class a2cscan(aNcscan):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'a2scan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                                'post-move', 'pre-acq',
-                                                'post-acq',
-                                                'post-scan')}
+    hints = {'scan': 'a2scan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -161,10 +155,8 @@ class d2cscan(aNcscan):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'd2cscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                                'post-move', 'pre-acq',
-                                                'post-acq',
-                                                'post-scan')}
+    hints = {'scan': 'd2cscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -204,10 +196,8 @@ class hcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -239,10 +229,8 @@ class hdcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -274,10 +262,8 @@ class lcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -309,10 +295,8 @@ class ldcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -344,10 +328,8 @@ class kcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -378,10 +360,8 @@ class kdcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -413,10 +393,8 @@ class hklcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -453,10 +431,8 @@ class hkldcscan(aNcscan, _diffrac):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'hscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                               'post-move', 'pre-acq',
-                                               'post-acq',
-                                               'post-scan')}
+    hints = {'scan': 'hscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 
@@ -486,6 +462,48 @@ class hkldcscan(aNcscan, _diffrac):
                       np.array([h_stop_pos, k_stop_pos, l_stop_pos], dtype='d'), nb_steps, integ_time, **opts)
 
 # ----------------------------------------------------------------------
+class script_scan(aNcscan, _diffrac):
+
+    """
+        Performs a continuous scan, based on the parameters, saved in file
+    """
+
+    # this is used to indicate other codes that the macro is a scan
+    hints = {'scan': 'script_scan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
+
+    env = ['ActiveMntGrp']
+
+    param_def = [
+        ['script',          Type.String,     None,   'Name of file with script'],
+    ]
+
+    # ----------------------------------------------------------------------
+    def prepare(self, script):
+
+        _reload(self)
+
+        self.name = 'script_scan'
+
+        _diffrac.prepare(self)
+
+        if not script.endswith('.scr'):
+            script += '.scr'
+
+        with open(os.path.join('/home/p23user/sardanaMacros/scripts', script), 'r') as f_in:
+            command = f_in.readline().strip('\n')
+            relative = 'dscan' if 'd' in command else 'ascan'
+            starts = np.array([float(pos) for pos in f_in.readline().strip('\n').split(';')], dtype='d')
+            stops = np.array([float(pos) for pos in f_in.readline().strip('\n').split(';')], dtype='d')
+            nb_steps = int(f_in.readline().strip('\n'))
+            integ_time = float(f_in.readline().strip('\n'))
+            constants = f_in.readline().strip('\n')
+            motors_settings = f_in.readline().strip('\n')
+
+        self._prepare(relative, 'reciprocal', [self.h_device, self.k_device, self.l_device],
+                      starts, stops, nb_steps, integ_time, constants=constants, motors_settings=motors_settings)
+
+# ----------------------------------------------------------------------
 #       Time scan
 # ----------------------------------------------------------------------
 class ctscan(aNcscan):
@@ -495,10 +513,8 @@ class ctscan(aNcscan):
     """
 
     # this is used to indicate other codes that the macro is a scan
-    hints = {'scan': 'ctscan', 'allowsHooks': ('pre-scan', 'pre-move',
-                                                'post-move', 'pre-acq',
-                                                'post-acq',
-                                                'post-scan')}
+    hints = {'scan': 'ctscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
 
     env = ['ActiveMntGrp']
 

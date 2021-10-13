@@ -286,7 +286,6 @@ class DetectorWorker(object):
         self.channel_name = detector
 
         self._timing_logger[self.channel_name] = []
-        self._correction_needed = False
         try:
             self._attenuator_proxy = PyTango.DeviceProxy(self._macro.getEnv('AttenuatorProxy'))
         except:
@@ -317,7 +316,7 @@ class DetectorWorker(object):
                 server_function = 'GetRoiForFrame'
                 channel = int(re.findall(r'\d+', attribute)[0])
 
-            need_correction = 'atten' in attribute
+            need_correction = 'atten' in source_info.name
 
             dev_to_add = [address, server_function, channel, source_info.label, source_info.full_name, need_correction]
 
@@ -341,7 +340,7 @@ class DetectorWorker(object):
 
                         if frame_is_analyzed:
                             _data_to_print = {}
-                            if self._correction_needed and self._attenuator_proxy is not None:
+                            if self._attenuator_proxy is not None:
                                 atten = self._attenuator_proxy.Position
                             else:
                                 atten = 1

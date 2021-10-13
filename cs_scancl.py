@@ -129,7 +129,8 @@ class CscanClass(Hookable):
                                    waypointGenerator=self._waypoint_generator,
                                    periodGenerator=self._period_generator,
                                    moveables=moveables, env=env,
-                                   constraints=constrains, extrainfodesc=extrainfodesc)
+                                   constraints=constrains, extrainfodesc=extrainfodesc,
+                                   constants=opts.get('constants'), motors_settings=opts.get('motors_settings'))
         else:
             raise RuntimeError('Unknown space {}!'.format(space))
 

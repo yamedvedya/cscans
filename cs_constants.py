@@ -7,7 +7,7 @@ Author yury.matveev@desy.de
 # General timeout to interrupt scan:
 TIMEOUT = 5
 # Special timeout for non-sync detector (e.g. ASAPO):
-TIMEOUT_DETECTORS = 5
+TIMEOUT_DETECTORS = 10
 # General refresh delay on loops (to decrease processor load)
 REFRESH_PERIOD = 1e-4
 
@@ -36,7 +36,9 @@ HKL_GRID_RESOLUTION = 0.01
 # precision of conversion
 POSITION_ROUND = 3
 # maximum deviation from linear law, after which the movement is considered as non-linear
-LIN_MOVE_THRESHOLD = 1e-2
+LIN_MOVE_THRESHOLD = 1.0e-2
+# min displacement from start position, after with motors is considered as motor with move
+MIN_DISPLACEMENT = 1.0e-2
 
 # Super ugly, should be better solution:
 COUNTER_NAMES = ('sis3820',)

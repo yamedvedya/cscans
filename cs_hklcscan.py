@@ -18,12 +18,32 @@ from cs_constants import *
 class HklCScan(CCScan):
 
     def __init__(self, macro, waypointGenerator=None, periodGenerator=None,
-                 moveables=[], env={}, constraints=[], extrainfodesc=[]):
+                 moveables=[], env={}, constraints=[], extrainfodesc=[],
+                 constants=None, motors_settings=None):
 
         super(HklCScan, self).__init__(macro, waypointGenerator, periodGenerator,
                  moveables, env, constraints, extrainfodesc, move_mode='vvc')
 
         self._main_motor_found = False
+
+        self.constants = {'hkl_grid': HKL_GRID_RESOLUTION,
+                          'lin_move_threshold': LIN_MOVE_THRESHOLD,
+                          'min_displacement': MIN_DISPLACEMENT,
+                          'position_round': POSITION_ROUND}
+
+        self.motors_settings = ['free' for _ in self._physical_moveables]
+
+        if constants is not None:
+            constants = constants.split(';')
+            self.constants = {'hkl_grid': float(constants[0]),
+                              'lin_move_threshold': float(constants[1]),
+                              'min_displacement': float(constants[2]),
+                              'position_round': int(constants[3])}
+
+        if motors_settings is not None:
+            motors_settings = {pair.split(':')[0]: pair.split(':')[1] for pair in motors_settings.split(';')}
+            for ind, motor in enumerate(self._physical_moveables):
+                self.motors_settings[ind] = motors_settings[motor.getName()]
 
     # ----------------------------------------------------------------------
     def _get_positions_for_hkl(self, hkl_values):
@@ -67,23 +87,26 @@ class HklCScan(CCScan):
 
     # ----------------------------------------------------------------------
     def _find_speeds(self, full_trajectories, ideal_period):
+
         real_period = ideal_period
         real_accels = np.zeros(full_trajectories.shape[0])
 
         trajectories = []
         linear_move = []
-        motors_with_movement = [False for _ in range(len(self._physical_moveables))]
+        motors_with_movement = [False for _ in self._physical_moveables]
 
-        for ind, trajectory in enumerate(full_trajectories):
+        for ind, (trajectory, status) in enumerate(zip(full_trajectories, self.motors_settings)):
             displacement = trajectory - trajectory[0]
+
             # check if there is a movement:
-            if np.any(displacement != 0):
+            if np.any(np.abs(displacement) > self.constants['min_displacement']) and status != 'exclude':
                 motors_with_movement[ind] = True
+
                 # check if movement is linear:
                 lin_move = trajectory[0] + displacement[-1]/(len(trajectory)-1) * np.arange(len(trajectory))
-                if np.any(np.abs(trajectory - lin_move) > LIN_MOVE_THRESHOLD):
+                if np.any(np.abs(trajectory - lin_move) > self.constants['lin_move_threshold']) and status != 'linear':
                     linear_move.append(False)
-                    displacement = np.round(displacement, POSITION_ROUND)
+                    displacement = np.round(displacement, self.constants['position_round'])
 
                     reduced_trajectory = np.array([0, trajectory[0]])
                     old_value = displacement[0]
@@ -214,14 +237,17 @@ class HklCScan(CCScan):
                         'Cscan cannot be performed due to the start overhead for {} is out of the limits'.format(
                             motor.getName()))
                 cmd_list[-1, 1] = np.round(trajectory[-1] + np.sign(trajectory[-1] - trajectory[-2])
-                                           * self._get_deccel_dx(motor, cmd_list[-1, 0]), POSITION_ROUND)
+                                           * self._get_deccel_dx(motor, cmd_list[-1, 0]),
+                                           self.constants['position_round'])
 
                 if not self._check_motor_limits(motor, start_positions[mot_ind]):
                     raise RuntimeError(
                         'Cscan cannot be performed due to the stop overhead for {} is out of the limits'.format(
                             motor.getName()))
 
-        return vvc_lists, np.round(start_positions, POSITION_ROUND), real_period / ideal_period
+        raise RuntimeError('Test run!')
+
+        return vvc_lists, np.round(start_positions, self.constants['position_round']), real_period / ideal_period
 
     # ----------------------------------------------------------------------
     def _check_movement_direction(self, trajectory):
@@ -243,6 +269,7 @@ class HklCScan(CCScan):
 
         if break_points:
             if not self.macro.ask_user('The trajectory is not monotonous, scan will be performed in {} parts. Continue?'.format(len(break_points) + 1)):
+                #self.output(str(break_points))
                 return False, []
             else:
                 break_points.append(trajectory.shape[1])
@@ -261,7 +288,7 @@ class HklCScan(CCScan):
         # first calculate how many steps are needed for each movement:
         n_steps = 0
         for start, stop in zip(waypoint['start_positions'], waypoint['positions']):
-            n_steps = max(n_steps, int(np.ceil(np.abs(stop-start)/HKL_GRID_RESOLUTION)) + 1)
+            n_steps = max(n_steps, int(np.ceil(np.abs(stop-start)/self.constants['hkl_grid'])) + 1)
 
         # then generate 3xsteps matrix with current positions:
         _hkl_trajectory = np.ones((n_steps, 3))
