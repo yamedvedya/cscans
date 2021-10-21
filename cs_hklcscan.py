@@ -245,8 +245,6 @@ class HklCScan(CCScan):
                         'Cscan cannot be performed due to the stop overhead for {} is out of the limits'.format(
                             motor.getName()))
 
-        raise RuntimeError('Test run!')
-
         return vvc_lists, np.round(start_positions, self.constants['position_round']), real_period / ideal_period
 
     # ----------------------------------------------------------------------

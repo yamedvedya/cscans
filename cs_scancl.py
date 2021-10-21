@@ -36,8 +36,19 @@ class CscanClass(Hookable):
         self.final_pos = []
         self.space = space
 
+        if self.mode == 'dscan':
+            self._original_command = 'd'
+        else:
+            self._original_command = 'd'
+
+        if len(motor) > 1:
+            self._original_command += f'{len(motor)}'
+
+        self._original_command += 'cscan '
+
         # first we parse all motors and check whether we have VMExecutors
         for mot, start, final in zip(motor, start_pos, final_pos):
+            self._original_command += f'{mot.getName()} {start} {final} '
             motor, start_pos, final_pos = self._parse_motors(mot, start, final)
             self.motors += motor
             self.start_pos += start_pos
@@ -45,6 +56,8 @@ class CscanClass(Hookable):
 
         self.nsteps = nb_steps
         self.integ_time = integ_time
+
+        self._original_command += f'{self.nsteps} {self.integ_time}'
 
         self._step_info = {"start_positions": self.start_pos, "positions": self.final_pos,
                "integ_time": self.integ_time, "npts": self.nsteps}
@@ -257,8 +270,13 @@ class aNcscan(iMacro, CscanClass):
             for step in self._gScan.step_scan():
                 yield step
 
+    # ----------------------------------------------------------------------
     def getCommand(self):
         return self._get_command('a')
+
+    # ----------------------------------------------------------------------
+    def getOriginalCommand(self):
+        return self._original_command
 
     # ----------------------------------------------------------------------
     def on_abort(self):

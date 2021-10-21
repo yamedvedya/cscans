@@ -51,7 +51,9 @@ class PILCWorker(object):
 
         self._trigger_generators = [PyTango.DeviceProxy(device) for device in PILC_TRIGGERS]
         self._counter = PyTango.DeviceProxy(PILC_COUNTER)
+        self._counter.manualmode = 0
         self._adc = PyTango.DeviceProxy(PILC_ADC)
+        self._adc.manualmode = 0
 
         f_name = os.path.splitext(self._macro.getEnv('ScanFile')[0])[0] + \
                                 '_{}_' + '{:05d}'.format(self._macro.getEnv('ScanID'))
@@ -130,6 +132,15 @@ class PILCWorker(object):
             raise
 
         self.pause()
+
+    # ----------------------------------------------------------------------
+    def reset_pilcs(self):
+        self._counter.manualmode = 1
+        self._adc.manualmode = 1
+
+    # ----------------------------------------------------------------------
+    def get_scan_point(self):
+        return self.last_collected_point
 
     # ----------------------------------------------------------------------
     def _get_point_for_detector(self, detector, point):

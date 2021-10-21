@@ -141,6 +141,10 @@ class TimerWorker(object):
             raise
 
     # ----------------------------------------------------------------------
+    def get_scan_point(self):
+        return self._point
+
+    # ----------------------------------------------------------------------
     def pause(self):
         self._paused = True
 

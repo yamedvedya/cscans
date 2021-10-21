@@ -53,6 +53,10 @@ class CCScan(CSScan):
         np.set_printoptions(precision=3)
 
         self._pilc_scan = False
+
+        #steering server
+        self._steering_server = PyTango.DeviceProxy(self.macro.getEnv('_scan_steering'))
+
         # general queue to report errors from all workers
         self._error_queue = Queue()
 
@@ -66,6 +70,8 @@ class CCScan(CSScan):
         self._pos_start_measurements = None
         self._pos_stop_measurements = None
         self._movement_direction = None
+
+        self._nb_point = None
 
         # list of movevvc commands
         self._command_lists = [[]]
@@ -202,11 +208,13 @@ class CCScan(CSScan):
     # ----------------------------------------------------------------------
     def calculate_speed(self, waypoint):
 
+        self._nb_point = waypoint["npts"]
+
         if not self._pilc_scan:
             self.macro.report_debug('Additional point delay: {}'.format(ADDITIONAL_POINT_DELAY))
-            travel_time = (waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * (waypoint["npts"] - 1)
+            travel_time = (waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * (self._nb_point - 1)
         else:
-            travel_time = waypoint["integ_time"] * (waypoint["npts"] - 1)
+            travel_time = waypoint["integ_time"] * (self._nb_point - 1)
 
         for motor, start_position, final_position in zip(self._physical_moveables, waypoint['start_positions'],
                                                          waypoint['positions']):
@@ -304,9 +312,9 @@ class CCScan(CSScan):
 
         if not self._pilc_scan:
             _integration_time_correction = travel_time / \
-                                           ((waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * (waypoint["npts"] - 1))
+                                           ((waypoint["integ_time"] + ADDITIONAL_POINT_DELAY) * (self._nb_point - 1))
         else:
-            _integration_time_correction = travel_time / (waypoint["integ_time"] * (waypoint["npts"] - 1))
+            _integration_time_correction = travel_time / (waypoint["integ_time"] * (self._nb_point- 1))
 
         self._integration_time = waypoint["integ_time"] * _integration_time_correction
 
@@ -318,7 +326,7 @@ class CCScan(CSScan):
                 'Integration time was corrected to {} due to slow motor(s)'.format(self._integration_time))
 
         if self._pilc_scan:
-            self._timer_worker.set_npts(waypoint["npts"])
+            self._timer_worker.set_npts(self._nb_point)
 
     # ----------------------------------------------------------------------
     def _check_motor_limits(self, motor, destination):
@@ -433,6 +441,10 @@ class CCScan(CSScan):
             return True
 
     # ----------------------------------------------------------------------
+    def _check_macro_to_stop(self):
+        return self.macro.isStopped() or self._check_for_errors() or self._steering_server.stopscan
+
+    # ----------------------------------------------------------------------
     def _pilc_loop(self):
 
         self.macro.report_debug("start PiLCs...")
@@ -440,21 +452,18 @@ class CCScan(CSScan):
 
         self.macro.report_debug("waiting for motion event")
         while not self.motion_event.is_set():
-            if self.macro.isStopped():
-                return
 
-            if self._check_for_errors():
+            if self._check_macro_to_stop():
                 return
 
             time.sleep(REFRESH_PERIOD)
 
         while self.motion_event.is_set() and not self._timer_worker.is_done():
 
-            if self.macro.isStopped():
+            if self._check_macro_to_stop():
                 break
 
-            if self._check_for_errors():
-                break
+            self._steering_server.scanprogress = 100.*self._timer_worker.get_scan_point()/self._nb_point
 
         self.macro.report_debug("Scan done, motion {}, timer {}".format(self.motion_event.is_set(),
                                                                         self._timer_worker.is_done()))
@@ -472,10 +481,7 @@ class CCScan(CSScan):
         # wait for motor to reach start position
 
         while not self.motion_event.is_set():
-            if self.macro.isStopped():
-                return
-
-            if self._check_for_errors():
+            if self._check_macro_to_stop():
                 return
 
             time.sleep(REFRESH_PERIOD)
@@ -492,27 +498,26 @@ class CCScan(CSScan):
                 self.macro.report_debug("current main motor position {}, waiting for {}".format(
                     self.movement.get_main_motor_position(), self._pos_start_measurements))
 
-            if self._check_for_errors():
+            if self._check_macro_to_stop():
                 return
 
         self._timer_worker.start()
 
         while self.motion_event.is_set():
 
-            # allow scan to stop
-            if self.macro.isStopped():
-                break
+            self._steering_server.scanprogress = max(0, 100.*self._timer_worker.get_scan_point()/self._nb_point)
 
-            if self._check_for_errors():
+            # allow scan to stop
+            if self._check_macro_to_stop():
                 break
 
             if _check_position(self._pos_stop_measurements):
                 break
 
-
         self.macro.report_debug('scan finished {} {} {}'.format(self._movement_direction,
-                                                         self.movement.get_main_motor_position(),
-                                                         self._pos_stop_measurements))
+                                                                self.movement.get_main_motor_position(),
+                                                                self._pos_stop_measurements))
+
     # ----------------------------------------------------------------------
     def _finish_scan(self):
 
@@ -552,6 +557,9 @@ class CCScan(CSScan):
             time.sleep(MOTOR_POSITION_REFRESH_PERIOD)
 
         self.macro.report_debug("scan loop finished")
+
+        if self._pilc_scan:
+            self._timer_worker.reset_pilcs()
 
         self._scan_in_process = False
 
