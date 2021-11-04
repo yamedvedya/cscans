@@ -183,15 +183,14 @@ class CCScan(CSScan):
         self.macro.report_debug('Starting barrier for {} workers'.format(num_counters))
         _workers_done_barrier = EndMeasurementBarrier(num_counters)
 
+        self._timer_worker = TimerWorker(self._error_queue, _worker_triggers + detector_triggers, _data_collector_trigger,
+                                         _workers_done_barrier, self.macro, self.movement, self._timing_logger)
         ind = 0
         for channel_info in self.measurement_group.getChannelsEnabledInfo():
             # this is main timer
             for timer_prefix in TIMER_PREFIXES:
                 if timer_prefix in channel_info.label:
-                    self._timer_worker = TimerWorker(get_tango_device(channel_info), self._error_queue,
-                                                     _worker_triggers + detector_triggers, _data_collector_trigger,
-                                                     _workers_done_barrier, self.macro, self.movement,
-                                                     self._timing_logger)
+                    self._timer_worker.append_timer(get_tango_device(channel_info))
 
             # all others sources
             detector = False

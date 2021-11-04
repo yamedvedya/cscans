@@ -26,7 +26,7 @@ from cs_constants import *
 
 
 class TimerWorker(object):
-    def __init__(self, timer_name, error_queue, triggers, data_collector_trigger,
+    def __init__(self, error_queue, triggers, data_collector_trigger,
                  workers_done_barrier, macro, movement, timing_logger):
         #parameters:
         # timer_name: tango name of timer
@@ -35,7 +35,7 @@ class TimerWorker(object):
         # lambda_roi_workers: list of lambda roi workers
         # workers_done_barrier: barrier where all workers reporting
 
-        self._device_proxy = PyTango.DeviceProxy(timer_name)
+        self._timer_proxies = []
 
         self._point = -1
         self._triggers = triggers
@@ -56,6 +56,11 @@ class TimerWorker(object):
         self._timing_logger = timing_logger
 
         self._worker = ExcThread(self._main_loop, 'timer_worker', error_queue)
+
+    # ----------------------------------------------------------------------
+    def append_timer(self, timer_name):
+        self._macro.report_debug(f'Appending timer device {timer_name}')
+        self._timer_proxies.append(PyTango.DeviceProxy(timer_name))
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
@@ -82,13 +87,13 @@ class TimerWorker(object):
 
                     _start_time = time.time()
 
-                    if self._timer_period < 3:
-                        self._device_proxy.StartAndWaitForTimer()
+                    for proxy in self._timer_proxies:
+                        proxy.Start()
 
-                    else:
-                        self._device_proxy.Start()
+                    if self._timer_period > 3:
                         time.sleep(self._timer_period - 1)
-                        self._device_proxy.WaitForTimer()
+
+                    self._timer_proxies[0].WaitForTimer()
 
                     _timer_time = time.time() - _start_time
                     self._timing_logger['Timer'].append(_timer_time)
@@ -166,7 +171,9 @@ class TimerWorker(object):
 
     # ----------------------------------------------------------------------
     def set_new_period(self, period):
-        self._device_proxy.SampleTime = period
+        for proxy in self._timer_proxies:
+            proxy.SampleTime = period
+
         self._timer_period = period
 
 
