@@ -374,7 +374,7 @@ class CCScan(CSScan):
         for worker in self._2d_detector_workers.values():
             worker.set_timeout(self._integration_time)
 
-        if self.macro.isStopped():
+        if self._check_macro_to_stop():
             return
 
         for part, (start, cmd_list) in enumerate(zip(self._start_positions, self._command_lists)):
@@ -384,7 +384,7 @@ class CCScan(CSScan):
                                                                                       len(self._start_positions)))
             self.movement.move_full_speed(start)
 
-            if self.macro.isStopped():
+            if self._check_macro_to_stop():
                 return
 
             self._timer_worker.resume()
@@ -534,6 +534,8 @@ class CCScan(CSScan):
         for worker in self._data_workers:
             worker.stop()
 
+        self._motion_thread.join()
+
         try:
             if hasattr(self.macro, 'getHooks'):
                 for hook in self.macro.getHooks('post-acq'):
@@ -597,10 +599,6 @@ class CCScan(CSScan):
     def do_restore(self):
         if self._scan_in_process:
             self._finish_scan()
-
-        if self.movement.is_moving():
-            self.macro.report_debug('Stopping motion')
-            self.movement.stop_move()
 
         self.macro.report_debug('Resetting motors')
         self._restore_motors()

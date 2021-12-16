@@ -27,6 +27,7 @@ def setup_detector(detectors, analysises, macro, pilc_scan, integ_time):
         if 'lambda' in detector:
             _detector_proxy.TriggerMode = 2
             _detector_proxy.FrameNumbers = max(macro.nsteps, 1000)
+            _detector_proxy.EnableASAPOStream = True
             if pilc_scan:
                 _detector_proxy.ShutterTime = int(integ_time * 1000) - PILC_TRIGGER_TIME - PILC_DETECTOR_DELAY
             else:
