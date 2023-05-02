@@ -43,7 +43,7 @@ MIN_DISPLACEMENT = 1.0e-2
 # Super ugly, should be better solution:
 COUNTER_NAMES = ('sis3820',)
 TIMER_PREFIXES = ('eh_t', 'exp_t')
-DETECTOR_NAMES = ('lmbd', 'p300')
+DETECTOR_NAMES = ('lmbd', 'p1m')
 
 # PILC setup:
 

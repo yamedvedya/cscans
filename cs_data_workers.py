@@ -90,8 +90,8 @@ class TimerWorker(object):
                     for proxy in self._timer_proxies:
                         proxy.Start()
 
-                    if self._timer_period > 3:
-                        time.sleep(self._timer_period - 1)
+                    if self._timer_period > 1:
+                        time.sleep(self._timer_period - 0.5)
 
                     self._timer_proxies[0].WaitForTimer()
 
@@ -323,6 +323,9 @@ class DetectorWorker(object):
             if 'diff' in attribute:
                 server_function = 'GetRoiDiffForFrame'
                 channel = None
+            elif 'max' in attribute:
+                server_function = 'GetMaxForFrame'
+                channel = int(re.findall(r'\d+', attribute)[0])
             else:
                 server_function = 'GetRoiForFrame'
                 channel = int(re.findall(r'\d+', attribute)[0])

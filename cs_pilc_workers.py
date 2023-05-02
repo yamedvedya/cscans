@@ -155,7 +155,11 @@ class PILCWorker(object):
         else:
             raise RuntimeError('Wrong PiLC for {}!'.format(detector))
 
-        return getattr(device, PILC_DETECTOR_MAP[detector]['attribute'])[point]
+        collected_data = getattr(device, PILC_DETECTOR_MAP[detector]['attribute'])
+        if collected_data is None:
+            raise RuntimeError(f"No data was recorded for {PILC_DETECTOR_MAP[detector]['attribute']} ({device})\nHit: execute cscan_set_pilc macro and if not helped: check trigger cables")
+
+        return collected_data[point]
 
     # ----------------------------------------------------------------------
     def _get_positions_for_point(self, point):

@@ -35,7 +35,7 @@ def setup_detector(detectors, analysises, macro, pilc_scan, integ_time):
 
             _detector_proxy.StartAcq()
 
-        elif 'p300' in detector:
+        elif 'p1m' in detector:
             #_detector_proxy.TriggerMode = 3 TEMP: TODO!!!
             _detector_proxy.NbFrames = macro.nsteps
             if pilc_scan:
@@ -67,6 +67,13 @@ def setup_detector(detectors, analysises, macro, pilc_scan, integ_time):
 
         if _analysis_proxy.State() == PyTango.DevState.MOVING:
             _analysis_proxy.StopAnalysis()
+            while _analysis_proxy.State() == PyTango.DevState.MOVING and time.time() - _time_out < TIMEOUT_DETECTORS:
+                time.sleep(0.1)
+                macro.checkPoint()
+
+        if _analysis_proxy.State() != PyTango.DevState.ON:
+            macro.output(f'{analysis} state: {_analysis_proxy.State()}')
+            raise RuntimeError(f'Cannot stop {analysis}')
 
         _analysis_proxy.StartAnalysis()
 
@@ -88,33 +95,43 @@ def stop_detector(detectors, analysises, macro):
         macro.report_debug(f'Stopping {analysis}')
         _analysis_proxy = PyTango.DeviceProxy(analysis)
 
-        _analysis_proxy.StopAnalysis()
-        time.sleep(0.1)
-
-        _time_out = time.time()
-        while _analysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
+        try:
+            _analysis_proxy.StopAnalysis()
             time.sleep(0.1)
 
-        if _analysis_proxy.State() != PyTango.DevState.ON:
-            macro.output(f'Cannot stop {analysis}!')
+            _time_out = time.time()
+            while _analysis_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
+                time.sleep(0.1)
+
+            if _analysis_proxy.State() != PyTango.DevState.ON:
+                macro.error(f'Cannot stop {analysis}!')
+
+        except Exception as err:
+            macro.error(f'Cannot stop {analysis}: {repr(err)}!')
+            macro.report_debug(f'Cannot stop {analysis}: {repr(err)}!')
 
     for detector in detectors.values():
         macro.report_debug(f'Stopping {detector}')
 
-        _detector_proxy = PyTango.DeviceProxy(detector)
+        try:
+            _detector_proxy = PyTango.DeviceProxy(detector)
 
-        _detector_proxy.StopAcq()
+            _detector_proxy.StopAcq()
 
-        _time_out = time.time()
-        while _detector_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
-            time.sleep(0.1)
+            _time_out = time.time()
+            while _detector_proxy.State() != PyTango.DevState.ON and time.time() - _time_out < TIMEOUT_DETECTORS:
+                time.sleep(0.1)
 
-        if _detector_proxy.State() == PyTango.DevState.ON:
-            if 'lambda' in detector:
-                _detector_proxy.FrameNumbers = 1
-            elif 'p300' in detector:\
-                _detector_proxy.NbFrames = 1
+            if _detector_proxy.State() == PyTango.DevState.ON:
+                if 'lambda' in detector:
+                    _detector_proxy.FrameNumbers = 1
+                elif 'p1m' in detector:\
+                    _detector_proxy.NbFrames = 1
 
-            _detector_proxy.TriggerMode = 0
-        else:
-            macro.output(f'Cannot reset {detector}! Check the settings.')
+                _detector_proxy.TriggerMode = 0
+            else:
+                macro.error(f'Cannot reset {detector}! Check the settings.')
+        except Exception as err:
+            macro.error(f'Cannot reset {detector}: {repr(err)}!')
+            macro.report_debug(f'Cannot reset {detector}: {repr(err)}!')
+

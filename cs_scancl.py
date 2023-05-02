@@ -77,6 +77,9 @@ class CscanClass(Hookable):
         try:
             self.pilc_mode = self.getEnv('cscan_pilc')
             self.report_debug('pilc_mode: {}'.format(self.pilc_mode))
+            if self.pilc_mode:
+                self.report_debug('setting pilc triggers')
+                self.execMacro('cscan_set_pilc')
         except Exception as err:
             self.report_debug('Cannot get cscan_pilc, pilc_mode set to False')
             self.pilc_mode = False
