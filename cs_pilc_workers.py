@@ -27,9 +27,12 @@ class PILCWorker(object):
         self._macro = macro
 
         self._time_scan = False
+        self._external_trigger = False
         for motor in movables:
             if motor == DUMMY_MOTOR:
                 self._time_scan = True
+            elif motor == EXTERNAL_TRIGGER:
+                self._external_trigger = True
             elif motor not in PILC_MOTORS_MAP.keys() or self._time_scan:
                 raise CannotDoPilc()
         self._movables = movables
@@ -38,10 +41,10 @@ class PILCWorker(object):
         for channel_info in experimental_channels:
             if 'eh_t' in channel_info.label:
                 self._timer_name = channel_info.full_name
-            elif 'lmbd' in channel_info.label:
+            elif 'lmbd' in channel_info.label or "1m" in channel_info.label:
                 pass
             elif channel_info.label not in PILC_DETECTOR_MAP.keys():
-                self._macro.warning('{} is not linked to any PiLC. The software scan will be performed')
+                self._macro.warning(f'{channel_info.label} is not linked to any PiLC. The software scan will be performed')
                 raise CannotDoPilc()
             else:
                 self._channels.append([channel_info.label, channel_info.full_name])
@@ -195,6 +198,9 @@ class PILCWorker(object):
             self._main_trigger = 0
             self._trigger_generators[self._main_trigger].TimeTriggerStart = start_position
             self._trigger_generators[self._main_trigger].TriggerMode = 2
+        elif self._external_trigger:
+            self._main_trigger = 0
+            self._trigger_generators[self._main_trigger].TriggerMode = 9
         else:
             self._main_trigger = int(PILC_MOTORS_MAP[motor]['device'])
             self._trigger_generators[self._main_trigger].PositionTriggerStart = start_position

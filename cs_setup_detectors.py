@@ -35,8 +35,8 @@ def setup_detector(detectors, analysises, macro, pilc_scan, integ_time):
 
             _detector_proxy.StartAcq()
 
-        elif 'p1m' in detector:
-            #_detector_proxy.TriggerMode = 3 TEMP: TODO!!!
+        elif '1m' in detector:
+            _detector_proxy.TriggerMode = 3 #TEMP: TODO!!!
             _detector_proxy.NbFrames = macro.nsteps
             if pilc_scan:
                 _detector_proxy.ExposureTime = integ_time - (PILC_TRIGGER_TIME - PILC_DETECTOR_DELAY)/1000

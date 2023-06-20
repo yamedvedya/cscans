@@ -543,6 +543,44 @@ class ctscan(aNcscan):
     def getCommand(self):
         return 'ascan {} 0 {} {} {}'.format(DUMMY_MOTOR, self.final_pos[0], self.nsteps, self.integ_time)
 
+# ----------------------------------------------------------------------
+#       Trigger scan
+# ----------------------------------------------------------------------
+class trscan(aNcscan):
+
+    """
+        Performs a continuous time scan
+    """
+
+    # this is used to indicate other codes that the macro is a scan
+    hints = {'scan': 'trscan', 'continuous': True,
+             'allowsHooks': ('pre-scan', 'pre-move', 'post-move', 'pre-acq', 'post-acq', 'post-scan')}
+
+    env = ['ActiveMntGrp']
+
+    param_def = [
+        ['total_points',        Type.Float,     None, 'Total scan points'],
+    ]
+
+    # ----------------------------------------------------------------------
+    def prepare(self, total_points, **opts):
+
+        _reload(self)
+
+        self.name = 'trscan'
+
+        motor = self.getMotor(EXTERNAL_TRIGGER)
+        motor.Acceleration = 0
+        motor.Deceleration = 0
+
+        self._steps = int(total_points)
+
+        self._prepare('trscan', 'real', [motor], np.array([0], dtype='d'),
+                      np.array([total_points], dtype='d'), int(total_points) + 1, 1, **opts)
+
+    # ----------------------------------------------------------------------
+    def getCommand(self):
+        return 'ascan {} 0 {} {} {}'.format(DUMMY_MOTOR, self.final_pos[0], self.nsteps, self.integ_time)
 
 # ----------------------------------------------------------------------
 #                       Auxiliary class to set environment

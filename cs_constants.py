@@ -24,6 +24,9 @@ MOTOR_POSITION_REFRESH_PERIOD = 1e-1
 # which motor is used for time scan
 DUMMY_MOTOR = 'exp_dmy01'
 
+# which motor name is used for external trigger for PiLCs
+EXTERNAL_TRIGGER = 'exp_dmy03'
+
 # possible answers to user requests
 YES_OPTIONS = ['Yes', 'yes', 'y']
 NO_OPTIONS = ['No', 'no', 'n']
