@@ -55,9 +55,12 @@ class CCScan(CSScan):
         self._pilc_scan = False
 
         #steering server
-        self._steering_server = PyTango.DeviceProxy(self.macro.getEnv('_scan_steering'))
+        try:
+            self._steering_server = PyTango.DeviceProxy(self.macro.getEnv('_scan_steering'))
+        except:
+            self._steering_server = None
 
-        # general queue to report errors from all workers
+            # general queue to report errors from all workers
         self._error_queue = Queue()
 
         # Thread to do motion (Sardana`s manager does not allow normal error handling)
@@ -441,7 +444,10 @@ class CCScan(CSScan):
 
     # ----------------------------------------------------------------------
     def _check_macro_to_stop(self):
-        return self.macro.isStopped() or self._check_for_errors() or self._steering_server.stopscan
+        stop = self.macro.isStopped() or self._check_for_errors()
+        if self._steering_server is not None:
+            stop = stop or self._steering_server.stopscan
+        return stop
 
     # ----------------------------------------------------------------------
     def _pilc_loop(self):
@@ -462,7 +468,8 @@ class CCScan(CSScan):
             if self._check_macro_to_stop():
                 break
 
-            self._steering_server.scanprogress = 100.*self._timer_worker.get_scan_point()/self._nb_point
+            if self._steering_server is not None:
+                self._steering_server.scanprogress = 100.*self._timer_worker.get_scan_point()/self._nb_point
 
         self.macro.report_debug("Scan done, motion {}, timer {}".format(self.motion_event.is_set(),
                                                                         self._timer_worker.is_done()))
@@ -504,7 +511,8 @@ class CCScan(CSScan):
 
         while self.motion_event.is_set():
 
-            self._steering_server.scanprogress = max(0, 100.*self._timer_worker.get_scan_point()/self._nb_point)
+            if self._steering_server is not None:
+                self._steering_server.scanprogress = max(0, 100.*self._timer_worker.get_scan_point()/self._nb_point)
 
             # allow scan to stop
             if self._check_macro_to_stop():
