@@ -9,7 +9,7 @@ TIMEOUT = 5
 # Special timeout for non-sync detector (e.g. ASAPO):
 TIMEOUT_DETECTORS = 10
 # General refresh delay on loops (to decrease processor load)
-REFRESH_PERIOD = 1e-4
+REFRESH_PERIOD = 1e-3
 
 # Stupid staff, but:
 # this delay is added to each point to do better calculation of motor speed:
@@ -69,7 +69,9 @@ PILC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
                    'chi': {'device': 1, 'encoder': 3},
                    'mu': {'device': 1, 'encoder': 5}}
 
-PILC_DETECTOR_MAP = {'eh_c01': {'device': 'CT', 'attribute': 'Counter1Data'}}
+# the measurement channel has to have the same name as in meas group
+PILC_DETECTOR_MAP = {'eh_c01': {'device': 'CT', 'attribute': 'Counter1Data'},
+                     'eh_c03': {'device': 'CT', 'attribute': 'Counter2Data'}}
 
 PILC_MINIMUM_DISPLACEMENT = 0.01
 

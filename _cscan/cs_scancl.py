@@ -15,9 +15,9 @@ from sardana.macroserver.macros.scan import getCallable, UNCONSTRAINED
 from sardana.macroserver.scan.scandata import MoveableDesc
 
 # cscans imports
-from cs_ccscan import CCScan
-from cs_hklcscan import HklCScan
-from cs_constants import *
+from _cscan.cs_ccscan import CCScan
+from _cscan.cs_hklcscan import HklCScan
+from _cscan.cs_constants import *
 
 # ----------------------------------------------------------------------
 #
@@ -274,7 +274,7 @@ class aNcscan(iMacro, CscanClass):
                 yield step
 
     # ----------------------------------------------------------------------
-    def getCommand(self):
+    def getMacroCommand(self):
         return self._get_command('a')
 
     # ----------------------------------------------------------------------

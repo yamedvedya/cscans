@@ -12,8 +12,8 @@ import os
 import numpy as np
 
 # cscans imports
-from cs_axillary_functions import ExcThread, CannotDoPilc
-from cs_constants import *
+from _cscan.cs_axillary_functions import ExcThread, CannotDoPilc
+from _cscan.cs_constants import *
 
 # ----------------------------------------------------------------------
 #                       Timer class
@@ -84,11 +84,11 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def _main_loop(self):
-        _start_time = time.time()
+        _start_time = None
         try:
             while not self._worker.stopped():
                 if not self._paused:
-                    if self._trigger_generators[self._main_trigger].TriggerCounter == 1 and _start_time is None:
+                    if self._trigger_generators[self._main_trigger].TriggerCounter and _start_time is None:
                         self._macro.report_debug('Timer: new start time saved')
                         _start_time = time.time()
 
@@ -232,6 +232,7 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def pause(self):
+        self._macro.report_debug(f'PiLC pause')
         self._trigger_generators[self._main_trigger].Arm = 0
 
         if len(self._trigger_generators) > 1:
@@ -241,6 +242,7 @@ class PILCWorker(object):
 
     # ----------------------------------------------------------------------
     def resume(self):
+        self._macro.report_debug(f'PiLC resume')
         self._trigger_generators[self._main_trigger].Arm = 1
 
         if len(self._trigger_generators) > 1:

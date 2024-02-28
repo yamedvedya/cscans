@@ -8,8 +8,8 @@ Author yury.matveev@desy.de
 import numpy as np
 
 # cscans imports, always reloaded to track changes
-from cs_ccscan import CCScan
-from cs_constants import *
+from _cscan.cs_ccscan import CCScan
+from _cscan.cs_constants import *
 
 # ----------------------------------------------------------------------
 #

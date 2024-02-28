@@ -1,7 +1,7 @@
 import PyTango
 import time
 
-from cs_constants import *
+from _cscan.cs_constants import *
 
 
 # ----------------------------------------------------------------------

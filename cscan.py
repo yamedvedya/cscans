@@ -30,19 +30,19 @@ from sardana.macroserver.macro import Macro, Type
 from sardana.macroserver.macros.hkl import _diffrac
 
 # cscans imports, always reloaded to track changes; ORDER IS IMPORTANT!!!!
-import cs_constants; reload(cs_constants)
-import cs_axillary_functions; reload(cs_axillary_functions)
-import cs_pilc_workers; reload(cs_pilc_workers)
-import cs_data_workers; reload(cs_data_workers)
-import cs_data_collector; reload(cs_data_collector)
-import cs_movement; reload(cs_movement)
-import cs_setup_detectors; reload(cs_setup_detectors)
-import cs_ccscan; reload(cs_ccscan)
-import cs_hklcscan; reload(cs_hklcscan)
-import cs_scancl; reload(cs_scancl)
+import _cscan.cs_constants; reload(_cscan.cs_constants)
+import _cscan.cs_axillary_functions; reload(_cscan.cs_axillary_functions)
+import _cscan.cs_pilc_workers; reload(_cscan.cs_pilc_workers)
+import _cscan.cs_data_workers; reload(_cscan.cs_data_workers)
+import _cscan.cs_data_collector; reload(_cscan.cs_data_collector)
+import _cscan.cs_movement; reload(_cscan.cs_movement)
+import _cscan.cs_setup_detectors; reload(_cscan.cs_setup_detectors)
+import _cscan.cs_ccscan; reload(_cscan.cs_ccscan)
+import _cscan.cs_hklcscan; reload(_cscan.cs_hklcscan)
+import _cscan.cs_scancl; reload(_cscan.cs_scancl)
 
-from cs_scancl import aNcscan
-from cs_constants import *
+from _cscan.cs_scancl import aNcscan
+from _cscan.cs_constants import *
 
 # ----------------------------------------------------------------------
 #       "Normal" a- and d- scans
@@ -540,7 +540,7 @@ class ctscan(aNcscan):
                       np.array([total_time], dtype='d'), int(total_time/integ_time) + 1, integ_time, **opts)
 
     # ----------------------------------------------------------------------
-    def getCommand(self):
+    def getMacroCommand(self):
         return 'ascan {} 0 {} {} {}'.format(DUMMY_MOTOR, self.final_pos[0], self.nsteps, self.integ_time)
 
 # ----------------------------------------------------------------------
@@ -579,7 +579,7 @@ class trscan(aNcscan):
                       np.array([total_points], dtype='d'), int(total_points) + 1, 1, **opts)
 
     # ----------------------------------------------------------------------
-    def getCommand(self):
+    def getMacroCommand(self):
         return 'ascan {} 0 {} {} {}'.format(DUMMY_MOTOR, self.final_pos[0], self.nsteps, self.integ_time)
 
 # ----------------------------------------------------------------------
@@ -619,14 +619,14 @@ class cscan_set_pilc(Macro):
 # ----------------------------------------------------------------------
 
 def _reload(self):
-    reload(cs_constants)
-    reload(cs_axillary_functions)
-    reload(cs_movement)
-    reload(cs_setup_detectors)
-    reload(cs_pilc_workers)
-    reload(cs_data_workers)
-    reload(cs_data_collector)
-    reload(cs_ccscan)
-    reload(cs_hklcscan)
-    reload(cs_scancl)
-    # self.info('Libs reloaded!')
+    reload(_cscan.cs_constants)
+    reload(_cscan.cs_axillary_functions)
+    reload(_cscan.cs_movement)
+    reload(_cscan.cs_setup_detectors)
+    reload(_cscan.cs_pilc_workers)
+    reload(_cscan.cs_data_workers)
+    reload(_cscan.cs_data_collector)
+    reload(_cscan.cs_ccscan)
+    reload(_cscan.cs_hklcscan)
+    reload(_cscan.cs_scancl)
+    self.debug('Libs reloaded!')

@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import PyTango
 
-from cs_constants import *
+from _cscan.cs_constants import *
 
 
 # ----------------------------------------------------------------------

@@ -25,8 +25,8 @@ import numpy as np
 import os
 
 # cscans imports
-from cs_axillary_functions import ExcThread
-from cs_constants import *
+from _cscan.cs_axillary_functions import ExcThread
+from _cscan.cs_constants import *
 
 
 class SerialMovement(object):

@@ -30,13 +30,13 @@ from sardana.macroserver.scan import CSScan
 
 # cscans imports
 
-from cs_axillary_functions import EndMeasurementBarrier, ExcThread, CannotDoPilc, get_tango_device
-from cs_setup_detectors import setup_detector, stop_detector
-from cs_pilc_workers import PILCWorker
-from cs_data_workers import DataSourceWorker, DetectorWorker, TimerWorker
-from cs_data_collector import DataCollectorWorker
-from cs_movement import SerialMovement
-from cs_constants import *
+from _cscan.cs_axillary_functions import EndMeasurementBarrier, ExcThread, CannotDoPilc, get_tango_device
+from _cscan.cs_setup_detectors import setup_detector, stop_detector
+from _cscan.cs_pilc_workers import PILCWorker
+from _cscan.cs_data_workers import DataSourceWorker, DetectorWorker, TimerWorker
+from _cscan.cs_data_collector import DataCollectorWorker
+from _cscan.cs_movement import SerialMovement
+from _cscan.cs_constants import *
 
 
 # ----------------------------------------------------------------------
@@ -55,9 +55,12 @@ class CCScan(CSScan):
         self._pilc_scan = False
 
         #steering server
-        self._steering_server = PyTango.DeviceProxy(self.macro.getEnv('_scan_steering'))
+        try:
+            self._steering_server = PyTango.DeviceProxy(self.macro.getEnv('_scan_steering'))
+        except:
+            self._steering_server = None
 
-        # general queue to report errors from all workers
+            # general queue to report errors from all workers
         self._error_queue = Queue()
 
         # Thread to do motion (Sardana`s manager does not allow normal error handling)
@@ -441,7 +444,10 @@ class CCScan(CSScan):
 
     # ----------------------------------------------------------------------
     def _check_macro_to_stop(self):
-        return self.macro.isStopped() or self._check_for_errors() or self._steering_server.stopscan
+        if self._steering_server is not None:
+            return self.macro.isStopped() or self._check_for_errors() or self._steering_server.stopscan
+        else:
+            return self.macro.isStopped() or self._check_for_errors()
 
     # ----------------------------------------------------------------------
     def _pilc_loop(self):
@@ -462,7 +468,10 @@ class CCScan(CSScan):
             if self._check_macro_to_stop():
                 break
 
-            self._steering_server.scanprogress = 100.*self._timer_worker.get_scan_point()/self._nb_point
+            if self._steering_server is not None:
+                self._steering_server.scanprogress = 100.*self._timer_worker.get_scan_point()/self._nb_point
+
+            time.sleep(REFRESH_PERIOD)
 
         self.macro.report_debug("Scan done, motion {}, timer {}".format(self.motion_event.is_set(),
                                                                         self._timer_worker.is_done()))
@@ -504,7 +513,8 @@ class CCScan(CSScan):
 
         while self.motion_event.is_set():
 
-            self._steering_server.scanprogress = max(0, 100.*self._timer_worker.get_scan_point()/self._nb_point)
+            if self._steering_server is not None:
+                self._steering_server.scanprogress = max(0, 100.*self._timer_worker.get_scan_point()/self._nb_point)
 
             # allow scan to stop
             if self._check_macro_to_stop():
