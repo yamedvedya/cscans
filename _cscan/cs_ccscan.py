@@ -152,7 +152,7 @@ class CCScan(CSScan):
             return False
 
         except Exception as err:
-            self.macro.error(err)
+            self.macro.error(err, exc_info=True)
             raise
 
         self._data_workers.append(self._timer_worker)
@@ -437,7 +437,7 @@ class CCScan(CSScan):
         except empty_queue:
             return False
         else:
-            self.macro.error(f'Error during script: {err[1][1]}')
+            self.macro.error(f'Error during script: {err[1][1]}', exc_info=True)
             tr_to_print = ''.join(traceback.format_tb(err[1][2]))
             self.macro.report_debug(f'Thread {err[0]} got an exception {err[1][1]}\n {tr_to_print}')
             return True

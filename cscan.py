@@ -592,7 +592,7 @@ class cscan_senv(Macro):
     def run(self):
         self.setEnv("LambdaOnlineAnalysis", "hasep23oh:10000/p23/lambdaonlineanalysis/oh.01")
         self.setEnv("LambdaASAPOAnalysis", "hasep23oh:10000/p23/lambdaasapoanalysis/oh.01")
-        self.setEnv("AttenuatorProxy", "hasep23oh:10000/p23/vmexecutor/attenuatorposition")
+        self.setEnv("AttenuatorProxy", "hasep23oh:10000/p23/vmexecutor/attenuator")
         self.setEnv("cscan_sync", True)
         self.setEnv("cscan_timeme", True)
         self.setEnv("cscan_debug", True)
@@ -608,10 +608,16 @@ class cscan_set_pilc(Macro):
     """ The trigger inputs should be NIM"""
 
     def run(self):
-        PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([0x03, 0x01, 0x03])
-        PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x01, 0x01, 0x03])
-        PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x05, 0x01, 0x03])
-        PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([0x03, 0x01, 0x03])
+        PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([0x03, 0x01, 0x03])  # TRG1
+        PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([13, 0x01, 0x04])  # TRG1
+        PyTango.DeviceProxy('p23/pilc/exp.01').WriteIOCard([14, 0x01, 0x04])  # TRG2
+
+        PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([0x03, 0x01, 0x03])  # TRG2
+        PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([13, 0x01, 0x04])  # TRG1
+        PyTango.DeviceProxy('p23/pilc/exp.05').WriteIOCard([14, 0x01, 0x04])  # TRG2
+
+        PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x01, 0x01, 0x03])  # SlAVE1
+        PyTango.DeviceProxy('p23/pilc/exp.03').WriteIOCard([0x05, 0x01, 0x03])  # SLAVE1
 
 
 # ----------------------------------------------------------------------

@@ -131,7 +131,7 @@ class SerialMovement(object):
                 time.sleep(MOTOR_POSITION_REFRESH_PERIOD)
 
         except Exception as err:
-            self._macro.error('Motion logging error!:' + err)
+            self._macro.error(f'Motion logging error: {err}', exc_info=True)
             # self._error_queue.put(err)
             raise
 
@@ -222,7 +222,7 @@ class SerialMovement(object):
             self._macro.report_debug('Full speed movement done')
 
         except Exception as err:
-            self._macro.error('Error during move: {}'.format(err))
+            self._macro.error(f'Error during move: {err}', exc_info=True)
             raise
 
     # ----------------------------------------------------------------------
@@ -252,7 +252,7 @@ class SerialMovement(object):
             self._macro.report_debug('Slow movement done')
 
         except Exception as err:
-            self._macro.error('Error during move: {}'.format(err))
+            self._macro.error(f'Error during move: {err}', exc_info=True)
             raise
 
 

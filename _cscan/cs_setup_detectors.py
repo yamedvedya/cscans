@@ -104,10 +104,10 @@ def stop_detector(detectors, analysises, macro):
                 time.sleep(0.1)
 
             if _analysis_proxy.State() != PyTango.DevState.ON:
-                macro.error(f'Cannot stop {analysis}!')
+                macro.error(f'Cannot stop {analysis}!', exc_info=True)
 
         except Exception as err:
-            macro.error(f'Cannot stop {analysis}: {repr(err)}!')
+            macro.error(f'Cannot stop {analysis}: {repr(err)}!', exc_info=True)
             macro.report_debug(f'Cannot stop {analysis}: {repr(err)}!')
 
     for detector in detectors.values():
@@ -130,7 +130,7 @@ def stop_detector(detectors, analysises, macro):
 
                 _detector_proxy.TriggerMode = 0
             else:
-                macro.error(f'Cannot reset {detector}! Check the settings.')
+                macro.error(f'Cannot reset {detector}! Check the settings.', exc_info=True)
         except Exception as err:
             macro.error(f'Cannot reset {detector}: {repr(err)}!')
             macro.report_debug(f'Cannot reset {detector}: {repr(err)}!')

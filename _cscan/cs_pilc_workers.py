@@ -54,9 +54,8 @@ class PILCWorker(object):
 
         self._trigger_generators = [PyTango.DeviceProxy(device) for device in PILC_TRIGGERS]
         self._counter = PyTango.DeviceProxy(PILC_COUNTER)
-        self._counter.manualmode = 0
         self._adc = PyTango.DeviceProxy(PILC_ADC)
-        self._adc.manualmode = 0
+        self.reset_pilcs()
 
         f_name = os.path.splitext(self._macro.getEnv('ScanFile')[0])[0] + \
                                 '_{}_' + '{:05d}'.format(self._macro.getEnv('ScanID'))
@@ -89,10 +88,12 @@ class PILCWorker(object):
             while not self._worker.stopped():
                 if not self._paused:
                     if self._trigger_generators[self._main_trigger].TriggerCounter and _start_time is None:
-                        self._macro.report_debug('Timer: new start time saved')
                         _start_time = time.time()
 
                     while self._trigger_generators[self._main_trigger].TriggerCounter > self.last_collected_point + 1:
+                        if _start_time is None:
+                            _start_time = time.time()
+
                         time.sleep(self._integration_time)
                         _new_point = self.last_collected_point + 1
                         if _new_point == 1:
@@ -130,7 +131,7 @@ class PILCWorker(object):
                 time.sleep(REFRESH_PERIOD)
 
         except Exception as err:
-            self._macro.error('Timer error: {}'.format(err))
+            self._macro.error(f'Timer error: {err}', exc_info=True)
             self.pause()
             raise
 
@@ -195,7 +196,7 @@ class PILCWorker(object):
     # ----------------------------------------------------------------------
     def setup_main_motor(self, motor, start_position):
         if self._time_scan:
-            self._main_trigger = 0
+            self._main_trigger = 1
             self._trigger_generators[self._main_trigger].TimeTriggerStart = start_position
             self._trigger_generators[self._main_trigger].TriggerMode = 2
         elif self._external_trigger:
@@ -225,10 +226,13 @@ class PILCWorker(object):
     def set_npts(self, npts):
         self._macro.report_debug(f'PiLC NPTS {npts}')
         self.npts = npts
-        self._trigger_generators[self._main_trigger].NbTriggers = npts + 2
+        self._trigger_generators[self._main_trigger].NbTriggers = npts + 1
 
         if len(self._trigger_generators) > 1:
-            self._trigger_generators[self._slave_trigger].NbTriggers = npts + 1
+            self._trigger_generators[self._slave_trigger].NbTriggers = npts
+
+        self._counter.NbTriggers = npts
+        self._adc.NbTriggers = npts
 
     # ----------------------------------------------------------------------
     def pause(self):
@@ -238,15 +242,23 @@ class PILCWorker(object):
         if len(self._trigger_generators) > 1:
             self._trigger_generators[self._slave_trigger].Arm = 0
 
+        self._counter.Arm = 0
+        self._adc.Arm = 0
+
         self._paused = True
 
     # ----------------------------------------------------------------------
     def resume(self):
         self._macro.report_debug(f'PiLC resume')
-        self._trigger_generators[self._main_trigger].Arm = 1
+        self._counter.Arm = 1
+        self._adc.Arm = 1
 
         if len(self._trigger_generators) > 1:
             self._trigger_generators[self._slave_trigger].Arm = 1
+
+        time.sleep(0.5) # to ensure all PILCs are triggered
+
+        self._trigger_generators[self._main_trigger].Arm = 1
 
         self._paused = False
 

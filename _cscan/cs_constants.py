@@ -51,7 +51,7 @@ DETECTOR_NAMES = ('lmbd', 'p1m')
 # PILC setup:
 
 PILC_DETECTOR_DELAY = 1 # ms
-PILC_TRIGGER_TIME = 0.5 #ms
+PILC_TRIGGER_TIME = 0.2 #ms
 
 # PILC addresses:
 PILC_TRIGGERS = ['p23/pilctriggergenerator/dev.01', 'p23/pilctriggergenerator/dev.02']
@@ -71,7 +71,10 @@ PILC_MOTORS_MAP = {'gx': {'device': 0, 'encoder': 1},
 
 # the measurement channel has to have the same name as in meas group
 PILC_DETECTOR_MAP = {'eh_c01': {'device': 'CT', 'attribute': 'Counter1Data'},
-                     'eh_c03': {'device': 'CT', 'attribute': 'Counter2Data'}}
+                     'eh_c03': {'device': 'CT', 'attribute': 'Counter2Data'},
+                     'pilc_exp4_adc1': {'device': 'ADC', 'attribute': 'ADC1Data'},
+                     'pilc_exp4_adc2': {'device': 'ADC', 'attribute': 'ADC2Data'}
+                     }
 
 PILC_MINIMUM_DISPLACEMENT = 0.01
 

@@ -104,7 +104,7 @@ class DataCollectorWorker(object):
 
         except Exception as err:
             self.status = 'finished'
-            self._macro.error('Datacollector error {} {}'.format(err, sys.exc_info()[2].tb_lineno))
+            self._macro.error("Datacollector error {err}", exc_info=True)
             raise err
 
     # ----------------------------------------------------------------------

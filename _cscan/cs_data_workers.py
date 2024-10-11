@@ -22,7 +22,7 @@ from _cscan.cs_constants import *
 
 # ----------------------------------------------------------------------
 #                       Timer class
-# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------at
 
 
 class TimerWorker(object):
@@ -142,7 +142,7 @@ class TimerWorker(object):
                     time.sleep(REFRESH_PERIOD)
 
         except Exception as err:
-            self._macro.error('Timer error: {}'.format(err))
+            self._macro.error(f'Timer error: {err}', exc_info=True)
             raise
 
     # ----------------------------------------------------------------------
@@ -255,7 +255,7 @@ class DataSourceWorker(object):
                     time.sleep(REFRESH_PERIOD)
 
         except Exception as err:
-            self._macro.error('{} error {} {}'.format(self._channel_label, err, sys.exc_info()[2].tb_lineno))
+            self._macro.error(f"{self._channel_label} error {err}", exc_info=True)
             raise err
 
     # ----------------------------------------------------------------------
@@ -394,7 +394,7 @@ class DetectorWorker(object):
                     time.sleep(REFRESH_PERIOD)
 
         except Exception as err:
-            self._macro.error('{} worker error {} {}'.format(self.channel_name, err, sys.exc_info()[2].tb_lineno))
+            self._macro.error(f'{self.channel_name} worker error {err}', exc_info=True)
             raise err
 
     # ----------------------------------------------------------------------
